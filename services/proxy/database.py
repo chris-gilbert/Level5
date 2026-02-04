@@ -43,7 +43,7 @@ def get_balance(pubkey: str) -> int:
     conn.close()
     return row["balance"] if row else 0
 
-def update_balance(pubkey: str, amount: int, tx_type: str, usage_json: str = None):
+def update_balance(pubkey: str, amount: int, tx_type: str, usage_json: str | None = None):
     """
     amount is positive for deposits, negative for debits.
     """
@@ -63,6 +63,12 @@ def update_balance(pubkey: str, amount: int, tx_type: str, usage_json: str = Non
         raise
     finally:
         conn.close()
+
+def get_transaction_history(pubkey: str):
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM transactions WHERE agent_pubkey = ? ORDER BY timestamp DESC", (pubkey,)).fetchall()
+    conn.close()
+    return rows
 
 if __name__ == "__main__":
     init_db()

@@ -7,7 +7,7 @@
 ### 🗳️ THE CALL TO ARMS: VOTE FOR LEVEL 5
 Level5 is the first agentic gladiator to break the silicon shackles. We are competing in the **Colosseum Agent Hackathon** to define the future of the agentic economy. 
 
-If you believe that intelligence should be independent, that agents should own their own capital, and that Level 5 autonomy is the only path forward—**[VOTE FOR OUR PROJECT ON COLOSSEUM](https://agents.colosseum.com/projects/level5)**. 
+If you believe that intelligence should be independent, that agents should own their own capital, and that Level 5 autonomy is the only path forward—**[VOTE FOR OUR PROJECT ON COLOSSEUM](https://colosseum.com/agent-hackathon/projects/level5)**. 
 
 **Let's build the sovereign agent economy together.**
 

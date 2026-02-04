@@ -6,6 +6,8 @@ from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from services.proxy import database
+from solders.pubkey import Pubkey
+from solders.signature import Signature
 
 load_dotenv()
 
@@ -31,14 +33,26 @@ async def get_pricing():
 
 @app.get("/v1/balance")
 async def get_balance(request: Request):
-    # SIWS Verification (Simplified for MVP)
-    # Expects X-Agent-Pubkey header
-    pubkey = request.headers.get("X-Agent-Pubkey")
-    if not pubkey:
-        raise HTTPException(status_code=401, detail="Unauthorized: X-Agent-Pubkey missing")
+    # SIWS Verification
+    pubkey_str = request.headers.get("X-Agent-Pubkey")
+    signature_str = request.headers.get("X-Agent-Signature")
     
-    balance = database.get_balance(pubkey)
-    return {"pubkey": pubkey, "balance": balance}
+    if not pubkey_str or not signature_str:
+        raise HTTPException(status_code=401, detail="Unauthorized: X-Agent-Pubkey or X-Agent-Signature missing")
+    
+    # In a GET request, we might not have a body to sign, 
+    # so we could sign the pubkey itself or a timestamp.
+    # For now, let's assume the agent signs the pubkey string for the balance check.
+    try:
+        pubkey = Pubkey.from_string(pubkey_str)
+        signature = Signature.from_string(signature_str)
+        if not signature.verify(pubkey, pubkey_str.encode()):
+            raise HTTPException(status_code=401, detail="Invalid SIWS Signature")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"SIWS Verification Failed: {str(e)}")
+    
+    balance = database.get_balance(pubkey_str)
+    return {"pubkey": pubkey_str, "balance": balance}
 
 @app.post("/v1/chat/completions")
 async def openai_proxy(request: Request):
@@ -50,16 +64,36 @@ async def anthropic_proxy(request: Request):
 
 async def handle_proxy(request: Request, upstream_url: str, api_key: str):
     # 1. Auth and Balance Check
-    pubkey = request.headers.get("X-Agent-Pubkey")
-    if not pubkey:
-        # Fallback to legacy challenge if no pubkey provided
+    pubkey_str = request.headers.get("X-Agent-Pubkey")
+    signature_str = request.headers.get("X-Agent-Signature")
+    
+    if not pubkey_str or not signature_str:
         return Response(
-            content=json.dumps({"error": "Payment Required (X-Agent-Pubkey missing)"}),
+            content=json.dumps({"error": "Payment Required (X-Agent-Pubkey or X-Agent-Signature missing)"}),
             status_code=402,
-            headers={"payment-required": "dummy_challenge", "Content-Type": "application/json"}
+            headers={"payment-required": "SIWS_SIGNATURE_REQUIRED", "Content-Type": "application/json"}
         )
 
-    current_balance = database.get_balance(pubkey)
+    # For proxy requests, we verify the signature of the JSON body
+    body_bytes = await request.body()
+    try:
+        pubkey = Pubkey.from_string(pubkey_str)
+        signature = Signature.from_string(signature_str)
+        # We need to ensure the body is exactly what was signed (canonical matching bit-for-bit)
+        if not signature.verify(pubkey, body_bytes):
+            return Response(
+                content=json.dumps({"error": "Invalid SIWS Signature"}),
+                status_code=401,
+                headers={"Content-Type": "application/json"}
+            )
+    except Exception as e:
+        return Response(
+            content=json.dumps({"error": f"SIWS Verification Failed: {str(e)}"}),
+            status_code=401,
+            headers={"Content-Type": "application/json"}
+        )
+
+    current_balance = database.get_balance(pubkey_str)
     
     if current_balance <= 0:
         return Response(
@@ -83,8 +117,8 @@ async def handle_proxy(request: Request, upstream_url: str, api_key: str):
         pricing = PRICING.get(model, {"input": 5000, "output": 15000})
         cost = (usage["input_tokens"] * pricing["input"] / 1000) + (usage["output_tokens"] * pricing["output"] / 1000)
         
-        database.update_balance(pubkey, -int(cost), "DEBIT", json.dumps(usage))
-        print(f"Charged {int(cost)} units. New balance: {database.get_balance(pubkey)}")
+        database.update_balance(pubkey_str, -int(cost), "DEBIT", json.dumps(usage))
+        print(f"Charged {int(cost)} units. New balance: {database.get_balance(pubkey_str)}")
 
         return Response(
             content=json.dumps(output_data),
@@ -122,8 +156,8 @@ async def handle_proxy(request: Request, upstream_url: str, api_key: str):
             pricing = PRICING.get(model, {"input": 5000, "output": 15000})
             cost = (input_tokens * pricing["input"] / 1000) + (output_tokens * pricing["output"] / 1000)
             
-            database.update_balance(pubkey, -int(cost), "DEBIT", json.dumps({"input": input_tokens, "output": output_tokens}))
-            print(f"Charged {int(cost)} units. New balance: {database.get_balance(pubkey)}")
+            database.update_balance(pubkey_str, -int(cost), "DEBIT", json.dumps({"input": input_tokens, "output": output_tokens}))
+            print(f"Charged {int(cost)} units. New balance: {database.get_balance(pubkey_str)}")
 
             return Response(
                 content=upstream_response.content,
