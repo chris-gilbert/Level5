@@ -1,0 +1,28 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment / Secrets
+.env
+.colosseum_credentials.json
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Solana / Anchor
+contracts/sovereign-contract/target/
+contracts/sovereign-contract/.anchor/
+**/test-ledger/
+**/*-keypair.json
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
