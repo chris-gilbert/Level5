@@ -17,9 +17,10 @@ def check_heartbeat():
     print("--- Fetching Heartbeat ---")
     response = requests.get("https://colosseum.com/heartbeat.md")
     if response.status_code == 200:
-        with open("heartbeat.md", "w") as f:
+        skill_path = ".agent/skills/heartbeat/SKILL.md"
+        with open(skill_path, "w") as f:
             f.write(response.text)
-        print("Updated heartbeat.md")
+        print(f"Updated {skill_path}")
     else:
         print(f"Failed to fetch heartbeat: {response.status_code}")
 

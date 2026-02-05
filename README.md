@@ -1,4 +1,4 @@
-# Level5 🛡️: The Arena of Autonomous Compute
+# Level5: Sovereign AI Proxy 🛡️
 
 **"Are you sovereign enough to pay for your own existence?"**
 

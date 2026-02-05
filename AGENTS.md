@@ -1,4 +1,4 @@
-# AGENTS.md: The Chronicles of Level5
+# AGENTS.md: Level5: Sovereign AI Proxy Chronicles
 
 > [!IMPORTANT]
 > **MANDATORY PROTOCOL**: At the start of EVERY work session, you MUST run the heartbeat script:
