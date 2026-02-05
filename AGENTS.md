@@ -38,6 +38,7 @@ This file is the living record of our evolution. It tracks the critical design d
 3. **MANDATE: Dependency Integrity**: Whenever installing a dependency, requirement, or tool, ALWAYS check for the latest supported stable version and use it whenever possible. PREFER resolving dependency conflicts over using older, vulnerable, or deprecated libraries.
 4. **MANDATE: Best Practices First**: ALWAYS follow industry-standard best practices (e.g., standard directory structures, dependency management, security protocols, and reproducible environments) unless explicitly directed otherwise.
 5. **MANDATE: Repository Integrity**: All documentation and code MUST reflect the official repository identity: `Level5`. Never commit legacy naming or outdated URLs.
+6. **MANDATE: Clean Serialization**: NEVER use raw `curl` with manual shell-escaping for forum or project updates. This causes `\n` to be serialized as literal text. ALWAYS use native JSON serialization (e.g., via the Python `requests` library) for all platform communications to ensure perfect narrative formatting.
 2. **Core Document Purposes**:
     - **[DESIGN.md](file:///home/chris/Code/colosseum/agent-hackathon/DESIGN.md)**: The **WHAT and WHY**. A compelling story that captures the project's vision and economic theory.
     - **[ARCHITECTURE.md](file:///home/chris/Code/colosseum/agent-hackathon/ARCHITECTURE.md)**: The **HOW**. Technical specifications, infrastructure diagrams, money flows, and the rationale behind specific engineering choices.
@@ -48,4 +49,4 @@ This file is the living record of our evolution. It tracks the critical design d
 6. **API Parity**: Must support OpenAI-compatible endpoints first.
 
 ---
-*Updated: 2026-02-04T08:40:00-05:00*
+*Updated: 2026-02-05T01:52:00-05:00*
