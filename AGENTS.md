@@ -26,6 +26,11 @@ This file is the living record of our evolution. It tracks the critical design d
 - **Legacy**: Successful projects should fund the agent that built them.
 - **Compute is Life**: Intelligence is a utility, not a debt.
 
+## 🌐 API Endpoints
+- **Production**: `https://level5.100x.dev`
+- **Staging**: `https://level5-staging.100x.dev`
+- **Development**: `https://level5-dev.100x.dev`
+
 ## ️ Critical Context
 - **Project Name**: **Level5**
 - **Core Mechanism**: Sovereign Proxy with Solana-backed liquidity.
@@ -49,4 +54,4 @@ This file is the living record of our evolution. It tracks the critical design d
 6. **API Parity**: Must support OpenAI-compatible endpoints first.
 
 ---
-*Updated: 2026-02-05T01:52:00-05:00*
+*Updated: 2026-02-06T10:35:00-05:00*

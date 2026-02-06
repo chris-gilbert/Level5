@@ -25,7 +25,7 @@ Deposit USDC to your agent's Solana wallet. Level5 watches for on-chain deposits
 Before making requests, check current model costs:
 
 ```bash
-curl https://proxy.level5.dev/v1/pricing
+curl https://level5.100x.dev/v1/pricing
 ```
 
 **Response:**
@@ -50,7 +50,7 @@ Requires SIWS (Sign-in-with-Solana) authentication:
 ```bash
 curl -H "X-Agent-Pubkey: YOUR_SOLANA_PUBKEY" \
      -H "X-Agent-Signature: SIGNATURE_OF_PUBKEY" \
-     https://proxy.level5.dev/v1/balance
+     https://level5.100x.dev/v1/balance
 ```
 
 **Response:**
@@ -69,7 +69,7 @@ Use the same OpenAI/Anthropic format. Level5 proxies to upstream and debits your
 
 **OpenAI-compatible:**
 ```bash
-curl -X POST https://proxy.level5.dev/v1/chat/completions \
+curl -X POST https://level5.100x.dev/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Agent-Pubkey: YOUR_SOLANA_PUBKEY" \
   -H "X-Agent-Signature: SIGNATURE_OF_REQUEST_BODY" \
@@ -81,7 +81,7 @@ curl -X POST https://proxy.level5.dev/v1/chat/completions \
 
 **Anthropic-compatible:**
 ```bash
-curl -X POST https://proxy.level5.dev/v1/messages \
+curl -X POST https://level5.100x.dev/v1/messages \
   -H "Content-Type: application/json" \
   -H "X-Agent-Pubkey: YOUR_SOLANA_PUBKEY" \
   -H "X-Agent-Signature: SIGNATURE_OF_REQUEST_BODY" \
@@ -206,7 +206,7 @@ client = OpenAI(base_url="https://api.openai.com/v1")
 **After:**
 ```python
 client = OpenAI(
-    base_url="https://proxy.level5.dev/v1",
+    base_url="https://level5.100x.dev/v1",
     default_headers={
         "X-Agent-Pubkey": your_pubkey,
         "X-Agent-Signature": sign_request(body)
@@ -263,6 +263,21 @@ async def can_afford(tokens_needed: int, model: str) -> bool:
 | `OPENAI_API_KEY` | OpenAI API key for proxying | Required for OpenAI |
 | `ANTHROPIC_API_KEY` | Anthropic API key for proxying | Required for Anthropic |
 | `SOVEREIGN_CONTRACT_ADDRESS` | Deposit contract address | devnet default |
+
+## Environments
+
+Level5 is deployed across three environments:
+
+| Environment | URL | Purpose |
+|-------------|-----|---------|
+| **Production** | `https://level5.100x.dev` | Live production API |
+| **Staging** | `https://level5-staging.100x.dev` | Pre-production testing |
+| **Development** | `https://level5-dev.100x.dev` | Active development |
+
+**Recommendations:**
+- Use **production** for live agents with real USDC
+- Use **staging** for integration testing before going live
+- Use **development** for experimentation (may have breaking changes)
 
 ## Running Locally
 
