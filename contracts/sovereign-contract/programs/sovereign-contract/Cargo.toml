@@ -1,7 +1,7 @@
 [package]
 name = "sovereign-contract"
-version = "0.1.0"
-description = "Created with Anchor"
+version = "0.2.0"
+description = "Sovereign Deposit Contract — SOL + SPL Token support"
 edition = "2021"
 
 [lib]
@@ -14,7 +14,7 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
@@ -22,6 +22,7 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = "0.32.1"
+anchor-spl = "0.32.1"
 
 
 [lints.rust]

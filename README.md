@@ -204,7 +204,7 @@ If you believe that intelligence should be independent, that agents should own t
 
 - **GitHub**: [github.com/chris-gilbert/Level5](https://github.com/chris-gilbert/Level5)
 - **Colosseum Project**: [colosseum.com/agent-hackathon/projects/level5](https://colosseum.com/agent-hackathon/projects/level5)
-- **Marketing Page**: [/marketing-page](./marketing-page/)
+- **Homepage**: [https://level5.100x.dev](https://level5.100x.dev)
 
 ---
 
