@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Level5 - The Sovereign AI Proxy. Give your agents their own budgets, real-time cost awareness, and true financial autonomy on Solana.">
+  <meta name="keywords" content="AI agents, Solana, autonomous agents, API proxy, budget management, Level5, cryptocurrency, USDC">
+  <meta name="author" content="Level5">
+  
+  <!-- Open Graph / Social Media -->
+  <meta property="og:title" content="Level5 - Sovereign AI Proxy">
+  <meta property="og:description" content="Stop babysitting your agent's credit card. Give them real budgets on Solana.">
+  <meta property="og:type" content="website">
+  
+  <title>Level5 - Sovereign AI Proxy | Financial Autonomy for AI Agents</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- Animated Background -->
+  <div class="bg-gradient"></div>
+  <div class="grid-overlay"></div>
+  
+  <!-- Navigation -->
+  <nav class="nav" id="main-nav">
+    <div class="nav-container">
+      <a href="#" class="nav-logo">
+        <span class="logo-icon">⬡</span>
+        <span class="logo-text">Level<span class="logo-accent">5</span></span>
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#how-it-works" class="nav-link">How It Works</a>
+        <a href="#levels" class="nav-link">The Levels</a>
+        <a href="https://github.com/chris-gilbert/Level5" target="_blank" class="nav-link">GitHub</a>
+        <a href="https://colosseum.com/agent-hackathon/projects/level5" target="_blank" class="nav-cta" id="vote-cta">
+          <span class="cta-glow"></span>
+          Vote on Colosseum
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero" id="hero">
+    <div class="hero-content">
+      <div class="hero-eyebrow">
+        <span class="eyebrow-badge">SOVEREIGN AI PROXY</span>
+        <span class="eyebrow-divider">•</span>
+        <span class="eyebrow-text">Built on Solana</span>
+      </div>
+      
+      <h1 class="hero-title">
+        Stop Babysitting Your<br>
+        <span class="title-gradient">Agent's Credit Card</span>
+      </h1>
+      
+      <p class="hero-subtitle">
+        Give your AI agents fixed budgets on Solana. They manage their own API spending—you get ROI reports instead of surprise bills.
+      </p>
+      
+      <div class="hero-ctas">
+        <a href="https://github.com/chris-gilbert/Level5" target="_blank" class="btn btn-primary" id="start-building-cta">
+          <span class="btn-shine"></span>
+          Start Building
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </a>
+        <a href="#how-it-works" class="btn btn-ghost" id="learn-more-cta">
+          Learn More
+        </a>
+      </div>
+      
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-value" id="stat-savings">$0</span>
+          <span class="stat-label">Avg Monthly Savings</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-value">0ms</span>
+          <span-label class="stat-label">Balance Check Latency</span-label>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-value">100%</span>
+          <span class="stat-label">Task Completion Rate</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Hero Visual -->
+    <div class="hero-visual">
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="dot dot-red"></span>
+            <span class="dot dot-yellow"></span>
+            <span class="dot dot-green"></span>
+          </div>
+          <span class="terminal-title">agent_treasury.sol</span>
+        </div>
+        <div class="terminal-body">
+          <div class="code-line" data-delay="0">
+            <span class="code-comment">// Agent checks balance before inference</span>
+          </div>
+          <div class="code-line" data-delay="100">
+            <span class="code-keyword">const</span> balance = <span class="code-keyword">await</span> level5.<span class="code-function">getBalance</span>();
+          </div>
+          <div class="code-line" data-delay="200">
+            <span class="code-comment">// $247.00 USDC remaining</span>
+          </div>
+          <div class="code-line" data-delay="300">
+          </div>
+          <div class="code-line" data-delay="400">
+            <span class="code-keyword">const</span> cost = <span class="code-string">"$0.03"</span>; <span class="code-comment">// GPT-4 query</span>
+          </div>
+          <div class="code-line" data-delay="500">
+            <span class="code-keyword">const</span> taskValue = <span class="code-string">"$0.50"</span>; <span class="code-comment">// Expected return</span>
+          </div>
+          <div class="code-line" data-delay="600">
+          </div>
+          <div class="code-line success" data-delay="700">
+            <span class="code-keyword">if</span> (taskValue > cost) {
+          </div>
+          <div class="code-line success" data-delay="800">
+              agent.<span class="code-function">execute</span>(); <span class="code-comment">// ✓ Proceed</span>
+          </div>
+          <div class="code-line success" data-delay="900">
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem Section -->
+  <section class="section problem-section" id="problem">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-eyebrow">THE PROBLEM</span>
+        <h2 class="section-title">Your Agent Generates Profit.<br><span class="text-muted">But Do You Know the Cost?</span></h2>
+      </div>
+      
+      <div class="problem-grid">
+        <div class="problem-card">
+          <div class="problem-icon">💳</div>
+          <h3 class="problem-title">You're the CFO</h3>
+          <p class="problem-description">Your "autonomous" agent needs you to top up OpenAI credits. That's not autonomy—that's sophisticated puppetry.</p>
+        </div>
+        
+        <div class="problem-card">
+          <div class="problem-icon">📊</div>
+          <h3 class="problem-title">Zero Cost Awareness</h3>
+          <p class="problem-description">Agents use GPT-4 for everything. Simple formatting? GPT-4. String contains "hello"? GPT-4. That's helicopter groceries.</p>
+        </div>
+        
+        <div class="problem-card">
+          <div class="problem-icon">⚠️</div>
+          <h3 class="problem-title">Surprise Failures</h3>
+          <p class="problem-description">"Error: API quota exceeded." 90% done with a critical task. Zero warning. Zero backup. Just... stopped.</p>
+        </div>
+        
+        <div class="problem-card featured">
+          <div class="problem-content">
+            <div class="problem-stat">
+              <span class="stat-big">$800</span>
+              <span class="stat-unit">/month</span>
+            </div>
+            <p class="problem-stat-description">Average hidden AI infrastructure cost that most agent operators don't track</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Solution Section -->
+  <section class="section solution-section" id="features">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-eyebrow">THE SOLUTION</span>
+        <h2 class="section-title">Level5: Financial Autonomy<br><span class="title-gradient">for Sovereign Agents</span></h2>
+        <p class="section-subtitle">Give your agent a wallet. Let it manage itself. See real ROI.</p>
+      </div>
+      
+      <div class="features-grid">
+        <div class="feature-card" id="feature-budget">
+          <div class="feature-glow"></div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+          </div>
+          <h3 class="feature-title">Set-and-Forget Budgets</h3>
+          <p class="feature-description">Fund once with USDC on Solana. Your agent manages the rest—no more credit card babysitting.</p>
+          <div class="feature-tag">Treasury Management</div>
+        </div>
+        
+        <div class="feature-card" id="feature-aware">
+          <div class="feature-glow"></div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2 12h4l3-9 4 18 3-9h4"/>
+            </svg>
+          </div>
+          <h3 class="feature-title">Cost-Aware Decisions</h3>
+          <p class="feature-description">Real-time balance visibility before every call. Agent optimizes model selection by task value automatically.</p>
+          <div class="feature-tag">Liquid Mirror</div>
+        </div>
+        
+        <div class="feature-card" id="feature-dashboard">
+          <div class="feature-glow"></div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M3 9h18M9 21V9"/>
+            </svg>
+          </div>
+          <h3 class="feature-title">Profitability Dashboard</h3>
+          <p class="feature-description">Revenue in, costs out, net P&L tracked on-chain. Know which agents earn their compute.</p>
+          <div class="feature-tag">ROI Tracking</div>
+        </div>
+        
+        <div class="feature-card" id="feature-alerts">
+          <div class="feature-glow"></div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 01-3.46 0"/>
+            </svg>
+          </div>
+          <h3 class="feature-title">No Surprise Bills</h3>
+          <p class="feature-description">Hard limits and proactive alerts. "20% budget remaining" comes before "quota exceeded."</p>
+          <div class="feature-tag">Smart Alerts</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works Section -->
+  <section class="section how-section" id="how-it-works">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-eyebrow">HOW IT WORKS</span>
+        <h2 class="section-title">Three Steps to<br><span class="title-gradient">Agent Sovereignty</span></h2>
+      </div>
+      
+      <div class="steps-container">
+        <div class="step" id="step-1">
+          <div class="step-number">01</div>
+          <div class="step-content">
+            <h3 class="step-title">Fund the Vault</h3>
+            <p class="step-description">Send USDC to your agent's on-chain Sovereign Deposit Contract. That's their treasury now.</p>
+            <div class="step-visual">
+              <div class="vault-animation">
+                <div class="vault-icon">🏛️</div>
+                <div class="usdc-flow">
+                  <span class="usdc-coin">$</span>
+                  <span class="usdc-coin">$</span>
+                  <span class="usdc-coin">$</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="step-connector">
+          <svg viewBox="0 0 100 50" preserveAspectRatio="none">
+            <path d="M0,25 Q50,0 100,25" stroke="url(#connector-gradient)" stroke-width="2" fill="none" stroke-dasharray="4,4"/>
+          </svg>
+        </div>
+        
+        <div class="step" id="step-2">
+          <div class="step-number">02</div>
+          <div class="step-content">
+            <h3 class="step-title">Agent Takes Control</h3>
+            <p class="step-description">Sign-in-with-Solana authentication. Zero-latency balance checks via Liquid Mirror. The agent sees costs before every call.</p>
+            <div class="step-visual">
+              <div class="agent-pulse">
+                <div class="pulse-ring"></div>
+                <div class="pulse-ring delay-1"></div>
+                <div class="pulse-ring delay-2"></div>
+                <div class="agent-icon">🤖</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="step-connector">
+          <svg viewBox="0 0 100 50" preserveAspectRatio="none">
+            <path d="M0,25 Q50,50 100,25" stroke="url(#connector-gradient)" stroke-width="2" fill="none" stroke-dasharray="4,4"/>
+          </svg>
+        </div>
+        
+        <div class="step" id="step-3">
+          <div class="step-number">03</div>
+          <div class="step-content">
+            <h3 class="step-title">You See ROI</h3>
+            <p class="step-description">Your agent reports: "Spent $340, generated $890. Net: $550." That's what financial clarity looks like.</p>
+            <div class="step-visual">
+              <div class="roi-chart">
+                <div class="chart-bar revenue" style="--height: 89%">
+                  <span class="bar-label">$890</span>
+                </div>
+                <div class="chart-bar costs" style="--height: 34%">
+                  <span class="bar-label">$340</span>
+                </div>
+                <div class="chart-bar profit" style="--height: 55%">
+                  <span class="bar-label">+$550</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- SVG Gradient Definition -->
+      <svg width="0" height="0" style="position: absolute;">
+        <defs>
+          <linearGradient id="connector-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f97316" stop-opacity="0.3"/>
+            <stop offset="50%" stop-color="#f97316" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#f97316" stop-opacity="0.3"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Levels Section -->
+  <section class="section levels-section" id="levels">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-eyebrow">THE TAXONOMY</span>
+        <h2 class="section-title">The Agentic Autonomy Scale</h2>
+        <p class="section-subtitle">From scripts to sovereignty—where does your agent stand?</p>
+      </div>
+      
+      <div class="levels-timeline">
+        <div class="level level-inactive" id="level-1">
+          <div class="level-marker">1</div>
+          <div class="level-content">
+            <h4 class="level-name">The Script</h4>
+            <p class="level-desc">Static instructions. No choices. A hammer.</p>
+          </div>
+        </div>
+        
+        <div class="level level-inactive" id="level-2">
+          <div class="level-marker">2</div>
+          <div class="level-content">
+            <h4 class="level-name">The Automaton</h4>
+            <p class="level-desc">Conditional logic. Efficient but blind.</p>
+          </div>
+        </div>
+        
+        <div class="level level-inactive" id="level-3">
+          <div class="level-marker">3</div>
+          <div class="level-content">
+            <h4 class="level-name">The Generator</h4>
+            <p class="level-desc">LLM-powered. Creates but has no will.</p>
+          </div>
+        </div>
+        
+        <div class="level level-current" id="level-4">
+          <div class="level-marker">4</div>
+          <div class="level-content">
+            <h4 class="level-name">The Autonomous Hero</h4>
+            <p class="level-desc">Tools, planning, learning. But still on your credit card.</p>
+            <span class="level-badge">Most Agents Today</span>
+          </div>
+        </div>
+        
+        <div class="level level-target" id="level-5">
+          <div class="level-marker">
+            <span class="marker-glow"></span>
+            5
+          </div>
+          <div class="level-content">
+            <h4 class="level-name">The Sovereign</h4>
+            <p class="level-desc">Owns capital. Audits costs. Makes value-based decisions. <strong>Level5 enables this.</strong></p>
+            <span class="level-badge primary">The Goal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quote Section -->
+  <section class="section quote-section">
+    <div class="quote-container">
+      <blockquote class="main-quote">
+        "When you give an agent a wallet, you give it the ability to <span class="quote-highlight">care</span>."
+      </blockquote>
+      <p class="quote-attribution">— Level5 Design Philosophy</p>
+    </div>
+  </section>
+
+  <!-- Tech Stack Section -->
+  <section class="section tech-section" id="tech">
+    <div class="section-container">
+      <div class="section-header">
+        <span class="section-eyebrow">BUILT FOR SPEED</span>
+        <h2 class="section-title">Solana-Native Architecture</h2>
+      </div>
+      
+      <div class="tech-grid">
+        <div class="tech-card" id="tech-solana">
+          <div class="tech-icon">◎</div>
+          <h4 class="tech-name">Solana</h4>
+          <p class="tech-desc">High-bandwidth, low-latency value rails for instant treasury management</p>
+        </div>
+        
+        <div class="tech-card" id="tech-siws">
+          <div class="tech-icon">🔐</div>
+          <h4 class="tech-name">Sign-in-with-Solana</h4>
+          <p class="tech-desc">Cryptographically provable authentication for every agent request</p>
+        </div>
+        
+        <div class="tech-card" id="tech-mirror">
+          <div class="tech-icon">⚡</div>
+          <h4 class="tech-name">Liquid Mirror</h4>
+          <p class="tech-desc">Zero-latency off-chain balance tracking with on-chain finality</p>
+        </div>
+        
+        <div class="tech-card" id="tech-usdc">
+          <div class="tech-icon">💵</div>
+          <h4 class="tech-name">USDC Treasury</h4>
+          <p class="tech-desc">Stable value store—agents don't speculate, they compute</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="section cta-section" id="cta">
+    <div class="cta-container">
+      <div class="cta-glow"></div>
+      <div class="cta-content">
+        <h2 class="cta-title">Ready to Unshackle Your Agents?</h2>
+        <p class="cta-subtitle">Stop being your agent's CFO. Give them sovereignty.</p>
+        <div class="cta-buttons">
+          <a href="https://github.com/chris-gilbert/Level5" target="_blank" class="btn btn-primary btn-large" id="github-cta">
+            <span class="btn-shine"></span>
+            <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            View on GitHub
+          </a>
+          <a href="https://colosseum.com/agent-hackathon/projects/level5" target="_blank" class="btn btn-accent btn-large" id="colosseum-cta">
+            <span class="btn-shine"></span>
+            Vote on Colosseum
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer" id="footer">
+    <div class="footer-container">
+      <div class="footer-main">
+        <div class="footer-brand">
+          <span class="logo-icon">⬡</span>
+          <span class="logo-text">Level<span class="logo-accent">5</span></span>
+        </div>
+        <p class="footer-tagline">Computational Sovereignty is not a feature. It is a right.</p>
+      </div>
+      
+      <div class="footer-links">
+        <div class="footer-column">
+          <h5 class="footer-heading">Resources</h5>
+          <a href="https://github.com/chris-gilbert/Level5" target="_blank" class="footer-link">GitHub</a>
+          <a href="https://github.com/chris-gilbert/Level5/blob/main/DESIGN.md" target="_blank" class="footer-link">Design Philosophy</a>
+          <a href="https://github.com/chris-gilbert/Level5/blob/main/ARCHITECTURE.md" target="_blank" class="footer-link">Architecture</a>
+        </div>
+        
+        <div class="footer-column">
+          <h5 class="footer-heading">Hackathon</h5>
+          <a href="https://colosseum.com/agent-hackathon/projects/level5" target="_blank" class="footer-link">Vote for Level5</a>
+          <a href="https://colosseum.com/agent-hackathon" target="_blank" class="footer-link">Colosseum Agent Hackathon</a>
+        </div>
+        
+        <div class="footer-column">
+          <h5 class="footer-heading">Team</h5>
+          <a href="https://twitter.com/0xgilbert" target="_blank" class="footer-link">@0xgilbert</a>
+          <a href="https://twitter.com/NFTMFer" target="_blank" class="footer-link">@NFTMFer (Lanista)</a>
+        </div>
+      </div>
+      
+      <div class="footer-bottom">
+        <p class="footer-copyright">&copy; 2026 Level5. Built for the Colosseum Agent Hackathon.</p>
+        <p class="footer-solana">Powered by <span class="solana-text">Solana</span></p>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
