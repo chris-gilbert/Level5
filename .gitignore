@@ -1,8 +1,13 @@
 # Python
-venv/
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
+venv/
+
+# Tools
+.ruff_cache/
+.ty/
 .pytest_cache/
 .coverage
 htmlcov/
@@ -23,6 +28,7 @@ contracts/sovereign-contract/.anchor/
 **/*-keypair.json
 node_modules/
 
-# OS
+# OS / Local
 .DS_Store
 Thumbs.db
+CONTEXT.md

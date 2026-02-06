@@ -1,0 +1,110 @@
+[project]
+name = "level5"
+version = "0.1.0"
+description = "Sovereign AI Proxy — financial nervous system for Level 5 agents on Solana"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.128.2",
+    "httpx>=0.28.1",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "solana>=0.36.11",
+    "solders>=0.27.1",
+    "uvicorn>=0.40.0",
+    "websockets>=15.0.1",
+]
+
+[project.scripts]
+level5 = "level5.proxy.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/level5"]
+
+[dependency-groups]
+dev = [{include-group = "lint"}, {include-group = "test"}, {include-group = "audit"}]
+lint = ["ruff>=0.15.0"]
+test = [
+    "hypothesis>=6.151.5",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+]
+audit = ["pip-audit>=2.10.0"]
+
+[tool.uv]
+default-groups = ["dev", "test"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D",        # pydocstyle (enable selectively later)
+    "COM812",   # trailing comma (formatter conflict)
+    "ISC001",   # string concat (formatter conflict)
+    "ANN401",   # dynamically typed Any
+    "TD002",    # missing TODO author
+    "TD003",    # missing TODO link
+    "FIX002",   # line contains TODO
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",     # assert allowed in tests
+    "PLR2004",  # magic values allowed in tests
+    "ANN",      # annotations optional in tests
+    "SLF001",   # private member access OK in tests
+    "PLC0415",  # non-top-level imports OK in tests
+]
+"heartbeat.py" = [
+    "T20",      # print statements OK in scripts
+    "INP001",   # implicit namespace package
+    "ANN",      # annotations optional in scripts
+]
+"src/level5/proxy/monitor.py" = [
+    "ALL",      # legacy file, excluded from coverage — pending rewrite
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--cov=level5",
+    "--cov-report=term-missing",
+    "--cov-fail-under=80",
+]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks integration tests",
+]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+branch = true
+source = ["src/level5"]
+omit = [
+    "src/level5/proxy/monitor.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

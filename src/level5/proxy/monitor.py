@@ -1,11 +1,12 @@
 import asyncio
-import json
 import os
-from anchorpy import Program, Idl, Provider, Wallet
+
+from anchorpy import Idl, Program, Provider, Wallet
+from dotenv import load_dotenv
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
-from services.proxy import database
-from dotenv import load_dotenv
+
+from level5.proxy import database
 
 load_dotenv()
 
@@ -13,9 +14,10 @@ IDL_PATH = "contracts/sovereign-contract/target/idl/sovereign_contract.json"
 RPC_URL = os.getenv("SOLANA_RPC_URL")
 PROGRAM_ID = os.getenv("SOVEREIGN_CONTRACT_ADDRESS")
 
+
 async def main():
     # Load IDL
-    with open(IDL_PATH, "r") as f:
+    with open(IDL_PATH) as f:
         idl_json = f.read()
     idl = Idl.from_json(idl_json)
 
@@ -35,15 +37,16 @@ async def main():
             owner = str(event.data.owner)
             amount = event.data.amount
             new_balance = event.data.new_balance
-            
-            print(f"--- On-chain Deposit Detected ---")
+
+            print("--- On-chain Deposit Detected ---")
             print(f"Agent: {owner}")
             print(f"Amount: {amount} lamports")
             print(f"Contract Balance: {new_balance} lamports")
-            
+
             # Update local persistent store
             database.update_balance(owner, amount, "DEPOSIT")
             print(f"Local balance updated for {owner}")
+
 
 if __name__ == "__main__":
     try:

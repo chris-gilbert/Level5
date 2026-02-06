@@ -1,19 +1,23 @@
+"""SQLite database for sovereign proxy balance tracking."""
+
+from __future__ import annotations
+
 import sqlite3
-import os
-from datetime import datetime
 
 DB_PATH = "sovereign_proxy.db"
 
-def get_db_connection():
+
+def get_db_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_db():
+
+def init_db() -> None:
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS agents (
         pubkey TEXT PRIMARY KEY,
@@ -21,7 +25,7 @@ def init_db():
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """)
-    
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,9 +37,10 @@ def init_db():
         FOREIGN KEY (agent_pubkey) REFERENCES agents (pubkey)
     )
     """)
-    
+
     conn.commit()
     conn.close()
+
 
 def get_balance(pubkey: str) -> int:
     conn = get_db_connection()
@@ -43,20 +48,30 @@ def get_balance(pubkey: str) -> int:
     conn.close()
     return row["balance"] if row else 0
 
-def update_balance(pubkey: str, amount: int, tx_type: str, usage_json: str | None = None):
-    """
-    amount is positive for deposits, negative for debits.
-    """
+
+def update_balance(
+    pubkey: str,
+    amount: int,
+    tx_type: str,
+    usage_json: str | None = None,
+) -> None:
+    """Update agent balance. amount is positive for deposits, negative for debits."""
     conn = get_db_connection()
     try:
         conn.execute("BEGIN")
-        # Ensure agent exists
-        conn.execute("INSERT OR IGNORE INTO agents (pubkey, balance) VALUES (?, 0)", (pubkey,))
-        # Update balance
-        conn.execute("UPDATE agents SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE pubkey = ?", (amount, pubkey))
-        # Log transaction
-        conn.execute("INSERT INTO transactions (agent_pubkey, type, amount, usage_json) VALUES (?, ?, ?, ?)", 
-                     (pubkey, tx_type, amount, usage_json))
+        conn.execute(
+            "INSERT OR IGNORE INTO agents (pubkey, balance) VALUES (?, 0)",
+            (pubkey,),
+        )
+        conn.execute(
+            "UPDATE agents SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP"
+            " WHERE pubkey = ?",
+            (amount, pubkey),
+        )
+        conn.execute(
+            "INSERT INTO transactions (agent_pubkey, type, amount, usage_json) VALUES (?, ?, ?, ?)",
+            (pubkey, tx_type, amount, usage_json),
+        )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -64,12 +79,16 @@ def update_balance(pubkey: str, amount: int, tx_type: str, usage_json: str | Non
     finally:
         conn.close()
 
-def get_transaction_history(pubkey: str):
+
+def get_transaction_history(pubkey: str) -> list[sqlite3.Row]:
     conn = get_db_connection()
-    rows = conn.execute("SELECT * FROM transactions WHERE agent_pubkey = ? ORDER BY timestamp DESC", (pubkey,)).fetchall()
+    rows = conn.execute(
+        "SELECT * FROM transactions WHERE agent_pubkey = ? ORDER BY timestamp DESC",
+        (pubkey,),
+    ).fetchall()
     conn.close()
     return rows
 
+
 if __name__ == "__main__":
     init_db()
-    print(f"Database initialized at {DB_PATH}")
