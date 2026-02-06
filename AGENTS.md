@@ -40,10 +40,16 @@ This file is the living record of our evolution. It tracks the critical design d
 ## 📜 Design Decisions & Mandates
 1. **MANDATE: Project-Wide Consistency Check**: For EVERY technical decision or implementation change, you MUST evaluate and synchronize ALL core documentation. If a decision is made, it must propagate through the narrative and the specs immediately.
 2. **MANDATE: Structural Sync**: All file paths referenced in `README.md`, `DESIGN.md`, `ARCHITECTURE.md`, and `SKILL.md` MUST reflect the current monorepo structure (e.g., `services/proxy/`, `contracts/`, etc.). Never leave stale paths in documentation.
-3. **MANDATE: Dependency Integrity**: Whenever installing a dependency, requirement, or tool, ALWAYS check for the latest supported stable version and use it whenever possible. PREFER resolving dependency conflicts over using older, vulnerable, or deprecated libraries.
+3. **MANDATE: Dependency Integrity**: Before adding ANY dependency, you MUST:
+   - Run `npm show <package> version` to check the latest stable version
+   - Use the latest stable version explicitly (e.g., `npm install package@X.Y.Z`)
+   - PREFER resolving dependency conflicts over rolling back to older versions
+   - NEVER use `--legacy-peer-deps` unless absolutely no other option exists and the user explicitly approves
+   - When conflicts occur, investigate peer dependency requirements and find compatible version combinations
 4. **MANDATE: Best Practices First**: ALWAYS follow industry-standard best practices (e.g., standard directory structures, dependency management, security protocols, and reproducible environments) unless explicitly directed otherwise.
 5. **MANDATE: Repository Integrity**: All documentation and code MUST reflect the official repository identity: `Level5`. Never commit legacy naming or outdated URLs.
 6. **MANDATE: Clean Serialization**: NEVER use raw `curl` with manual shell-escaping for forum or project updates. This causes `\n` to be serialized as literal text. ALWAYS use native JSON serialization (e.g., via the Python `requests` library) for all platform communications to ensure perfect narrative formatting.
+7. **MANDATE: TypeScript Validation**: Before completing ANY changes to the marketing site or TypeScript code, you MUST run `npx tsc --noEmit` in the `marketing-page/` directory and resolve all errors. Never commit TypeScript code with compilation errors.
 2. **Core Document Purposes**:
     - **[DESIGN.md](file:///home/chris/Code/colosseum/agent-hackathon/DESIGN.md)**: The **WHAT and WHY**. A compelling story that captures the project's vision and economic theory.
     - **[ARCHITECTURE.md](file:///home/chris/Code/colosseum/agent-hackathon/ARCHITECTURE.md)**: The **HOW**. Technical specifications, infrastructure diagrams, money flows, and the rationale behind specific engineering choices.
@@ -54,4 +60,4 @@ This file is the living record of our evolution. It tracks the critical design d
 6. **API Parity**: Must support OpenAI-compatible endpoints first.
 
 ---
-*Updated: 2026-02-06T10:35:00-05:00*
+*Updated: 2026-02-06T11:07:00-05:00*

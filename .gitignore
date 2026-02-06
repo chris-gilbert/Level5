@@ -28,6 +28,7 @@ contracts/sovereign-contract/.anchor/
 **/test-ledger/
 **/*-keypair.json
 node_modules/
+dist/
 
 # OS / Local
 .DS_Store

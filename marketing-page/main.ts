@@ -35,7 +35,6 @@ function initNavScroll(): void {
     const nav = document.getElementById('main-nav');
     if (!nav) return;
 
-    let lastScroll = 0;
     const scrollThreshold = 50;
 
     window.addEventListener('scroll', () => {
@@ -47,8 +46,6 @@ function initNavScroll(): void {
         } else {
             nav.classList.remove('scrolled');
         }
-
-        lastScroll = currentScroll;
     }, { passive: true });
 }
 
@@ -266,4 +263,4 @@ function typeWriter(element: HTMLElement, text: string, speed: number = 50): voi
 }
 
 // Export for potential module usage
-export { initNavScroll, initScrollAnimations, initStatCounters };
+export { initNavScroll, initScrollAnimations, initStatCounters, typeWriter };
