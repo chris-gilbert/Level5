@@ -15,6 +15,7 @@ htmlcov/
 # Environment / Secrets
 .env
 .colosseum_credentials.json
+.omc
 
 # Database
 *.db
