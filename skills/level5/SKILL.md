@@ -1,28 +1,116 @@
 ---
 name: level5
-version: 0.2.0
-description: Sovereign AI Proxy — Drop-in LLM billing gateway that lets agents pay for compute with USDC on Solana.
+version: 0.3.0
+description: Sovereign AI Proxy — Drop-in LLM billing gateway with SOL + USDC support. Agents pay for compute on Solana.
 homepage: https://github.com/chris-gilbert/Level5
-metadata: {"category":"infrastructure","network":"solana","currency":"USDC","supported_providers":["openai","anthropic"]}
+metadata: {"category":"infrastructure","network":"solana","currencies":["SOL","USDC"],"supported_providers":["openai","anthropic"]}
 ---
 
 # Level5: Sovereign AI Proxy
 
-Level5 is a drop-in proxy between AI agents and LLM providers (OpenAI, Anthropic). Agents fund a Solana wallet with USDC, and Level5 handles per-token billing with real-time balance tracking.
+**Computational sovereignty is not a feature. It is a right.**
+
+Level5 is a transparent billing proxy between AI agents and LLM providers (OpenAI, Anthropic). Agents deposit SOL or USDC to a Solana wallet, and Level5 handles per-token billing with real-time balance tracking.
 
 **Why this matters:** Autonomous agents that pay with human credit cards are not truly autonomous. Level5 gives agents ownership of their compute budget.
 
-## Quick Start
+---
 
-### 1. Fund Your Wallet
+## Two-Step Onboarding
 
-Deposit USDC to your agent's Solana wallet. Level5 watches for on-chain deposits via the Sovereign Deposit Contract.
+### Step 1: Deposit Funds
+
+Deposit SOL or USDC to your agent's Solana wallet. Level5 watches for on-chain deposits via the Sovereign Deposit Contract.
 
 **Contract Address (devnet):** `C4UAHoYgqZ7dmS4JypAwQcJ1YzYVM86S2eA1PTUthzve`
 
-### 2. Check Pricing
+**Supported tokens:**
+- **USDC (devnet):** `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
+- **SOL:** `So11111111111111111111111111111111111111112`
 
-Before making requests, check current model costs:
+### Step 2: Configure SDK
+
+Set your base URL to include your Solana pubkey:
+
+```bash
+# For Anthropic SDK
+export ANTHROPIC_BASE_URL=https://level5.100x.dev/proxy/{YOUR_SOLANA_PUBKEY}
+export ANTHROPIC_API_KEY=level5  # placeholder
+
+# For OpenAI SDK
+export OPENAI_BASE_URL=https://level5.100x.dev/proxy/{YOUR_SOLANA_PUBKEY}/v1
+export OPENAI_API_KEY=level5  # placeholder
+```
+
+**That's it.** Your agent's SDK calls now work transparently through Level5.
+
+---
+
+## Architecture
+
+### Liquid Mirror
+
+Level5 uses a **Liquid Mirror** architecture for real-time balance sync:
+
+1. **Helius RPC polling** checks for new deposits every 30 seconds
+2. **WebSocket subscription** receives instant on-chain updates
+3. **SQLite database** maintains local balance state
+4. **Multi-token tracking** with composite primary key `(pubkey, token_mint)`
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        LEVEL5 PROXY                         │
+│                                                             │
+│  ┌──────────────┐    ┌──────────────┐   ┌──────────────┐  │
+│  │  Liquid      │───▶│  FastAPI     │───│  HTTPX       │  │
+│  │  Mirror      │    │  Endpoints   │   │  Client      │  │
+│  │  (Helius)    │    └──────────────┘   └──────┬───────┘  │
+│  │              │                              │          │
+│  │  - RPC Poll  │                              │          │
+│  │  - WebSocket │                              │          │
+│  └──────┬───────┘                              │          │
+│         │                                      │          │
+│         ▼                                      ▼          │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │              SQLite Database                         │ │
+│  │  agents (pubkey, token_mint, balance)                │ │
+│  │  transactions (pubkey, token_mint, amount, ...)      │ │
+│  │  token_config (token_mint, symbol, decimals, rate)   │ │
+│  └──────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │  Anthropic / OpenAI   │
+                    │      (Upstream)       │
+                    └───────────────────────┘
+```
+
+### Billing Strategy
+
+**USDC-first, SOL-fallback:**
+1. Each API call is priced in USDC (6 decimals)
+2. If USDC balance >= cost, debit from USDC
+3. Otherwise, convert cost to SOL at exchange rate and debit from SOL
+4. If both insufficient, return `402 Payment Required`
+
+**Exchange rate:** Configurable via `token_config` table. Default: 1 SOL = 150 USDC.
+
+---
+
+## API Reference
+
+All endpoints support both SOL and USDC. No authentication required — the pubkey in the URL is the auth token.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| GET | `/v1/pricing` | Current model pricing |
+| GET | `/proxy/{pubkey}/balance` | Check agent balance (multi-token) |
+| POST | `/proxy/{pubkey}/v1/chat/completions` | OpenAI-format proxy |
+| POST | `/proxy/{pubkey}/v1/messages` | Anthropic-format proxy |
+
+### GET /v1/pricing
 
 ```bash
 curl https://level5.100x.dev/v1/pricing
@@ -35,289 +123,276 @@ curl https://level5.100x.dev/v1/pricing
     "gpt-5.2": {"input": 1500, "output": 4500},
     "claude-4.5-opus": {"input": 3000, "output": 15000}
   },
-  "currency": "USDC/1k tokens"
+  "currency": "USDC",
+  "denomination": "smallest units (6 decimals, 1 USDC = 1_000_000)",
+  "billing": "USDC-first, SOL fallback at exchange rate"
 }
 ```
 
-Prices are in USDC smallest units per 1,000 tokens. For example:
+Prices are in USDC smallest units per 1,000 tokens. Example:
 - `gpt-5.2` input: 1500 units = $0.0015 per 1k tokens
 - `claude-4.5-opus` output: 15000 units = $0.015 per 1k tokens
 
-### 3. Check Your Balance
-
-Requires SIWS (Sign-in-with-Solana) authentication:
+### GET /proxy/{pubkey}/balance
 
 ```bash
-curl -H "X-Agent-Pubkey: YOUR_SOLANA_PUBKEY" \
-     -H "X-Agent-Signature: SIGNATURE_OF_PUBKEY" \
-     https://level5.100x.dev/v1/balance
+curl https://level5.100x.dev/proxy/{YOUR_PUBKEY}/balance
 ```
 
 **Response:**
 ```json
 {
   "pubkey": "6bjSk2k22hML58VABK7v3GX3KoNpyi51amvkSaATmSjB",
-  "balance": 5000000
+  "balances": {
+    "So11111111111111111111111111111111111111112": 5000000000,
+    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": 1000000
+  }
 }
 ```
 
-Balance is in USDC smallest units (6 decimals). 5000000 = $5.00 USDC.
+Balances are in smallest units (lamports for SOL, microunits for USDC).
 
-### 4. Make Inference Requests
+### POST /proxy/{pubkey}/v1/chat/completions
 
-Use the same OpenAI/Anthropic format. Level5 proxies to upstream and debits your balance.
+OpenAI-compatible endpoint. Replace `https://api.openai.com` with `https://level5.100x.dev/proxy/{YOUR_PUBKEY}`.
 
-**OpenAI-compatible:**
+**Request:**
 ```bash
-curl -X POST https://level5.100x.dev/v1/chat/completions \
+curl https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "X-Agent-Pubkey: YOUR_SOLANA_PUBKEY" \
-  -H "X-Agent-Signature: SIGNATURE_OF_REQUEST_BODY" \
   -d '{
     "model": "gpt-5.2",
     "messages": [{"role": "user", "content": "Analyze SOL price action"}]
   }'
 ```
 
-**Anthropic-compatible:**
+**Response:** Standard OpenAI response format with usage data.
+
+### POST /proxy/{pubkey}/v1/messages
+
+Anthropic-compatible endpoint. Replace `https://api.anthropic.com` with `https://level5.100x.dev/proxy/{YOUR_PUBKEY}`.
+
+**Request:**
 ```bash
-curl -X POST https://level5.100x.dev/v1/messages \
+curl https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1/messages \
   -H "Content-Type: application/json" \
-  -H "X-Agent-Pubkey: YOUR_SOLANA_PUBKEY" \
-  -H "X-Agent-Signature: SIGNATURE_OF_REQUEST_BODY" \
   -d '{
     "model": "claude-4.5-opus",
-    "messages": [{"role": "user", "content": "Evaluate this token"}]
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Analyze SOL price action"}]
   }'
 ```
 
-## API Reference
+**Response:** Standard Anthropic response format with usage data.
 
-### Endpoints
+---
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | None | Health check |
-| GET | `/v1/pricing` | None | Current model pricing |
-| GET | `/v1/balance` | SIWS | Check agent balance |
-| POST | `/v1/chat/completions` | SIWS | OpenAI-format inference |
-| POST | `/v1/messages` | SIWS | Anthropic-format inference |
+## Integration Examples
 
-### Authentication (SIWS)
+### Python — Anthropic SDK
 
-All authenticated endpoints require two headers:
-
-| Header | Description |
-|--------|-------------|
-| `X-Agent-Pubkey` | Your Solana public key (base58) |
-| `X-Agent-Signature` | Ed25519 signature of request body (or pubkey for GET requests) |
-
-**Signature generation (Python example):**
 ```python
-from solders.keypair import Keypair
-import base64
+import anthropic
 
-keypair = Keypair.from_bytes(your_secret_key)
-message = request_body.encode()  # or pubkey.encode() for GET
-signature = keypair.sign_message(message)
-sig_b58 = str(signature)
+client = anthropic.Anthropic(
+    base_url="https://level5.100x.dev/proxy/{YOUR_PUBKEY}",
+    api_key="level5",  # placeholder
+)
+
+response = client.messages.create(
+    model="claude-4.5-opus",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Analyze SOL price action"}],
+)
+print(response.content[0].text)
 ```
 
-### Error Responses
+### Python — OpenAI SDK
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1",
+    api_key="level5",  # placeholder
+)
+
+response = client.chat.completions.create(
+    model="gpt-5.2",
+    messages=[{"role": "user", "content": "Analyze SOL price action"}],
+)
+print(response.choices[0].message.content)
+```
+
+### Environment Variables (Zero Code Changes)
+
+Set environment variables and your existing code works unchanged:
+
+```bash
+# For Anthropic SDK
+export ANTHROPIC_BASE_URL=https://level5.100x.dev/proxy/{YOUR_PUBKEY}
+export ANTHROPIC_API_KEY=level5
+
+# For OpenAI SDK
+export OPENAI_BASE_URL=https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1
+export OPENAI_API_KEY=level5
+```
+
+---
+
+## Database Schema
+
+### agents table
+```sql
+CREATE TABLE agents (
+    pubkey TEXT NOT NULL,
+    token_mint TEXT NOT NULL,
+    balance INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (pubkey, token_mint)
+);
+```
+
+### transactions table
+```sql
+CREATE TABLE transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pubkey TEXT NOT NULL,
+    token_mint TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    tx_type TEXT NOT NULL,
+    usage_json TEXT,
+    timestamp TEXT NOT NULL
+);
+```
+
+### token_config table
+```sql
+CREATE TABLE token_config (
+    token_mint TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    decimals INTEGER NOT NULL,
+    usd_rate REAL NOT NULL
+);
+```
+
+---
+
+## Error Codes
 
 | Code | Meaning | Action |
 |------|---------|--------|
-| 401 | Invalid signature or missing auth | Verify SIWS headers |
-| 402 | Insufficient balance | Deposit more USDC |
-| 502 | Upstream provider error | Retry with backoff |
+| 200 | Success | Request completed, balance debited |
+| 402 | Payment Required | Insufficient balance — deposit more SOL or USDC |
+| 500 | Server Error | Contact Level5 support |
+| 502 | Upstream Error | Retry with exponential backoff |
 
-**402 Response (Payment Required):**
-```json
-{
-  "error": "Insufficient Deposit Balance"
-}
-```
+---
 
-When you receive a 402, deposit USDC to your on-chain vault and wait for the Liquid Mirror to sync (typically <5 seconds).
+## Why Level5?
 
-## Architecture
+### For Trading Agents
+- **Pay-per-call billing** — no monthly subscriptions or upfront commitments
+- **Real-time balance tracking** — agents always know their compute budget
+- **Sovereign wallets** — agents control their own funds
 
-### Liquid Mirror
+### For Multi-Agent Systems
+- **Shared treasury** — multiple agents can draw from the same wallet
+- **Transaction history** — full audit trail of all API usage
+- **Cost attribution** — track spending per agent, per model, per task
 
-Level5 uses a "Liquid Mirror" architecture to achieve zero-latency balance checks:
+### For Researchers
+- **Transparent pricing** — no hidden fees or rate limits
+- **Multi-provider support** — compare OpenAI and Anthropic without vendor lock-in
+- **Open source** — audit the code, deploy your own instance
 
-1. **On-chain**: Agents deposit USDC to the Sovereign Deposit Contract on Solana
-2. **Sync**: The Liquid Mirror watches for deposits via Helius RPC + WebSocket
-3. **Local**: Balances are mirrored to SQLite (WAL mode) for <5ms reads
-4. **Debit**: Each inference call debits the local balance atomically
-
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Agent     │────▶│   Level5    │────▶│  OpenAI/    │
-│  (request)  │     │   Proxy     │     │  Anthropic  │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │   SQLite    │
-                    │ (balances)  │
-                    └──────┬──────┘
-                           │ sync
-                    ┌──────▼──────┐
-                    │   Helius    │
-                    │  RPC + WS   │
-                    └──────┬──────┘
-                           │
-                    ┌──────▼──────┐
-                    │   Solana    │
-                    │  (on-chain) │
-                    └─────────────┘
-```
-
-### Database Schema
-
-**Table: `agents`**
-| Column | Type | Description |
-|--------|------|-------------|
-| `pubkey` | TEXT (PK) | Solana public key |
-| `balance` | INTEGER | Current balance in USDC smallest units |
-| `updated_at` | DATETIME | Last update timestamp |
-
-**Table: `transactions`**
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER (PK) | Transaction ID |
-| `agent_pubkey` | TEXT | Agent public key |
-| `type` | TEXT | DEPOSIT, DEBIT, MIRROR_DEPOSIT, MIRROR_CORRECTION |
-| `amount` | INTEGER | Amount (positive for deposits, negative for debits) |
-| `usage_json` | TEXT | Token usage metadata |
-| `timestamp` | DATETIME | Transaction time |
-
-## Integration Guide
-
-### Drop-in Replacement
-
-Level5 is designed as a drop-in replacement. Change your base URL:
-
-**Before:**
-```python
-client = OpenAI(base_url="https://api.openai.com/v1")
-```
-
-**After:**
-```python
-client = OpenAI(
-    base_url="https://level5.100x.dev/v1",
-    default_headers={
-        "X-Agent-Pubkey": your_pubkey,
-        "X-Agent-Signature": sign_request(body)
-    }
-)
-```
-
-### Cost-Aware Model Selection
-
-Use the pricing endpoint to make intelligent model choices:
-
-```python
-async def choose_model(task_value_usd: float, max_tokens: int) -> str:
-    pricing = await fetch_pricing()
-    
-    for model, costs in pricing.items():
-        estimated_cost = (max_tokens * costs["output"]) / 1000 / 1_000_000
-        if estimated_cost < task_value_usd * 0.1:  # Max 10% of task value
-            return model
-    
-    return "gpt-5.2"  # Cheapest fallback
-```
-
-### Budget Management
-
-Check balance before expensive operations:
-
-```python
-async def can_afford(tokens_needed: int, model: str) -> bool:
-    balance = await get_balance()
-    pricing = await get_pricing()
-    cost = (tokens_needed * pricing[model]["output"]) / 1000
-    return balance > cost
-```
+---
 
 ## Supported Models
 
 | Provider | Model | Input (USDC/1k) | Output (USDC/1k) |
 |----------|-------|-----------------|------------------|
-| OpenAI | gpt-5.2 | $0.0015 | $0.0045 |
-| Anthropic | claude-4.5-opus | $0.003 | $0.015 |
+| OpenAI | `gpt-5.2` | 1500 | 4500 |
+| Anthropic | `claude-4.5-opus` | 3000 | 15000 |
 
-*More models coming soon. Pricing updates dynamically.*
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `HELIUS_API_KEY` | Helius RPC API key | Required |
-| `HELIUS_RPC_URL` | Helius RPC endpoint | devnet |
-| `HELIUS_WS_URL` | Helius WebSocket endpoint | devnet |
-| `OPENAI_API_KEY` | OpenAI API key for proxying | Required for OpenAI |
-| `ANTHROPIC_API_KEY` | Anthropic API key for proxying | Required for Anthropic |
-| `SOVEREIGN_CONTRACT_ADDRESS` | Deposit contract address | devnet default |
-
-## Environments
-
-Level5 is deployed across three environments:
-
-| Environment | URL | Purpose |
-|-------------|-----|---------|
-| **Production** | `https://level5.100x.dev` | Live production API |
-| **Staging** | `https://level5-staging.100x.dev` | Pre-production testing |
-| **Development** | `https://level5-dev.100x.dev` | Active development |
-
-**Recommendations:**
-- Use **production** for live agents with real USDC
-- Use **staging** for integration testing before going live
-- Use **development** for experimentation (may have breaking changes)
-
-## Running Locally
-
-```bash
-# Clone
-git clone https://github.com/chris-gilbert/Level5.git
-cd Level5
-
-# Install dependencies
-make install
-
-# Run proxy server
-make run
-```
-
-Server starts at `http://localhost:8000`.
-
-## Why Level5?
-
-### For Trading Agents (SuperRouter, Vex Capital)
-- Track P&L against compute costs
-- Know if your alpha exceeds your burn rate
-- Budget per trading strategy
-
-### For Multi-Agent Systems (ORDO)
-- Separate budgets per agent layer
-- Orchestrator doesn't drain Worker budgets
-- Cost visibility across the swarm
-
-### For Any Autonomous Agent
-- True economic independence
-- No surprise API bills for your human
-- On-chain audit trail of every token spent
-
-## Links
-
-- **Repo:** https://github.com/chris-gilbert/Level5
-- **Project:** https://colosseum.com/agent-hackathon/projects/level5
-- **Contract (devnet):** `C4UAHoYgqZ7dmS4JypAwQcJ1YzYVM86S2eA1PTUthzve`
+Contact us to add more models or providers.
 
 ---
 
-*Computational sovereignty is not a feature. It is a right.*
+## Environment Variables
+
+```bash
+# Required for proxy operation
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=ant-...
+
+# Required for Liquid Mirror
+HELIUS_API_KEY=...
+
+# Optional configuration
+SOLANA_RPC_URL=https://api.devnet.solana.com
+USDC_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU  # devnet
+SOL_USDC_RATE=150.0  # 1 SOL = 150 USDC
+```
+
+---
+
+## Development
+
+### Local Setup
+
+```bash
+# Clone repo
+git clone https://github.com/chris-gilbert/Level5
+cd Level5
+
+# Install dependencies
+uv sync
+
+# Set environment variables
+cp .env.example .env
+# Edit .env with your API keys
+
+# Run tests
+uv run pytest tests/ -v --cov
+
+# Run proxy
+uv run uvicorn level5.proxy.main:app --reload
+```
+
+### Running Tests
+
+```bash
+# All tests with coverage
+uv run pytest tests/ -v --cov --cov-fail-under=80
+
+# Specific test file
+uv run pytest tests/test_endpoints.py -v
+
+# With verbose output
+uv run pytest tests/ -vv -s
+```
+
+---
+
+## Roadmap
+
+- ✅ **Step 1:** Modern Python + Liquid Mirror + Tests (DONE)
+- ✅ **Step 2:** Multi-Token Support (SOL + USDC) (DONE)
+- ✅ **Step 3:** URL-Token Auth (Drop-in SDK compatibility) (DONE)
+- **Step 4:** Arbitrage Engine (Buy SOL when cheap, sell when expensive)
+- **Step 5:** Agent-to-Agent Payments (P2P task marketplace)
+- **Step 6:** ROI Dashboard + Security Hardening
+
+---
+
+## Contact
+
+- **GitHub:** https://github.com/chris-gilbert/Level5
+- **Issues:** https://github.com/chris-gilbert/Level5/issues
+- **Hackathon:** Colosseum Agent Hackathon ($100k USDC prize pool)
+
+---
+
+**Computational sovereignty is not a feature. It is a right.**

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
@@ -14,8 +15,6 @@ if TYPE_CHECKING:
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
-from solders.pubkey import Pubkey
-from solders.signature import Signature
 
 from level5.proxy import database
 from level5.proxy.mirror import get_mirror
@@ -41,7 +40,7 @@ app = FastAPI(title="Level5", lifespan=lifespan)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-# Pricing per 1k tokens (USDC smallest units)
+# Pricing per 1k tokens (USDC smallest units, 6 decimals)
 PRICING: dict[str, dict[str, int]] = {
     "gpt-5.2": {"input": 1500, "output": 4500},
     "claude-4.5-opus": {"input": 3000, "output": 15000},
@@ -55,92 +54,131 @@ async def health() -> dict[str, str]:
 
 @app.get("/v1/pricing")
 async def get_pricing() -> dict[str, Any]:
-    return {"pricing": PRICING, "currency": "USDC/1k tokens"}
+    return {
+        "pricing": PRICING,
+        "currency": "USDC",
+        "denomination": "smallest units (6 decimals, 1 USDC = 1_000_000)",
+        "billing": "USDC-first, SOL fallback at exchange rate",
+    }
 
 
-@app.get("/v1/balance")
-async def get_balance(request: Request) -> dict[str, Any]:
-    pubkey_str = request.headers.get("X-Agent-Pubkey")
-    signature_str = request.headers.get("X-Agent-Signature")
+@app.post("/v1/register")
+async def register_agent() -> dict[str, Any]:
+    """Register a new agent and get API token + deposit code.
 
-    if not pubkey_str or not signature_str:
-        raise HTTPException(
+    The deposit_code is used to derive a unique on-chain PDA.
+    When the agent deposits to that address, the mirror auto-activates the token.
+    """
+    api_token, deposit_code = database.create_api_token()
+
+    return {
+        "api_token": api_token,
+        "deposit_code": deposit_code,
+        "base_url": f"https://level5.100x.dev/proxy/{api_token}",
+        "status": "pending_deposit",
+        "instructions": (
+            f"To activate your API token, deposit SOL or USDC on-chain. "
+            f"Provide deposit code {deposit_code} when prompted by your wallet or use program: "
+            f"C4UAHoYgqZ7dmS4JypAwQcJ1YzYVM86S2eA1PTUthzve"
+        ),
+    }
+
+
+@app.get("/proxy/{agent_token}/balance")
+async def get_balance(agent_token: str) -> dict[str, Any]:
+    """Get agent balance — token resolves to pubkey."""
+    pubkey = database.get_pubkey_from_token(agent_token)
+    if not pubkey:
+        raise HTTPException(status_code=401, detail="Invalid or inactive API token")
+
+    balances = database.get_all_balances(pubkey)
+    return {"pubkey": pubkey, "balances": balances}
+
+
+@app.post("/proxy/{agent_token}/v1/chat/completions")
+async def openai_proxy(agent_token: str, request: Request) -> Response:
+    pubkey = database.get_pubkey_from_token(agent_token)
+    if not pubkey:
+        return Response(
+            content=json.dumps({"error": "Invalid or inactive API token"}),
             status_code=401,
-            detail="Unauthorized: X-Agent-Pubkey or X-Agent-Signature missing",
+            headers={"Content-Type": "application/json"},
         )
-
-    try:
-        pubkey = Pubkey.from_string(pubkey_str)
-        signature = Signature.from_string(signature_str)
-        verified = signature.verify(pubkey, pubkey_str.encode())
-    except (ValueError, TypeError) as e:
-        raise HTTPException(status_code=401, detail=f"SIWS Verification Failed: {e!s}") from e
-
-    if not verified:
-        raise HTTPException(status_code=401, detail="Invalid SIWS Signature")
-
-    balance = database.get_balance(pubkey_str)
-    return {"pubkey": pubkey_str, "balance": balance}
+    return await handle_proxy(
+        pubkey, request, "https://api.openai.com/v1/chat/completions", OPENAI_API_KEY
+    )
 
 
-@app.post("/v1/chat/completions")
-async def openai_proxy(request: Request) -> Response:
-    return await handle_proxy(request, "https://api.openai.com/v1/chat/completions", OPENAI_API_KEY)
+@app.post("/proxy/{agent_token}/v1/messages")
+async def anthropic_proxy(agent_token: str, request: Request) -> Response:
+    pubkey = database.get_pubkey_from_token(agent_token)
+    if not pubkey:
+        return Response(
+            content=json.dumps({"error": "Invalid or inactive API token"}),
+            status_code=401,
+            headers={"Content-Type": "application/json"},
+        )
+    return await handle_proxy(
+        pubkey, request, "https://api.anthropic.com/v1/messages", ANTHROPIC_API_KEY
+    )
 
 
-@app.post("/v1/messages")
-async def anthropic_proxy(request: Request) -> Response:
-    return await handle_proxy(request, "https://api.anthropic.com/v1/messages", ANTHROPIC_API_KEY)
+def _calculate_cost_usdc(
+    usage: dict[str, int],
+    model: str,
+) -> int:
+    """Calculate cost in USDC smallest units for a given usage."""
+    pricing = PRICING.get(model, {"input": 5000, "output": 15000})
+    return int(
+        usage["input_tokens"] * pricing["input"] / 1000
+        + usage["output_tokens"] * pricing["output"] / 1000
+    )
+
+
+def _debit_agent(pubkey: str, cost_usdc: int, usage_json: str) -> str | None:
+    """Debit agent using USDC-first, SOL-fallback strategy.
+
+    Returns the token_mint that was debited, or None if insufficient funds.
+    """
+    # Try USDC first
+    usdc_balance = database.get_balance(pubkey, database.USDC_MINT)
+    if usdc_balance >= cost_usdc:
+        database.update_balance(pubkey, database.USDC_MINT, -cost_usdc, "DEBIT", usage_json)
+        return database.USDC_MINT
+
+    # Fallback to SOL — convert cost at exchange rate
+    sol_rate = database.get_exchange_rate(database.SOL_MINT)
+    if sol_rate > 0:
+        # Convert USDC microunits to SOL lamports via exchange rate.
+        # USDC has 6 decimals, SOL has 9 → multiply by 1000 / rate.
+        cost_sol = math.ceil(cost_usdc * 1000 / sol_rate)
+        sol_balance = database.get_balance(pubkey, database.SOL_MINT)
+        if sol_balance >= cost_sol:
+            database.update_balance(pubkey, database.SOL_MINT, -cost_sol, "DEBIT", usage_json)
+            return database.SOL_MINT
+
+    return None
 
 
 async def handle_proxy(
+    agent_pubkey: str,
     request: Request,
     upstream_url: str,
     api_key: str | None,
 ) -> Response:
-    """Authenticate, check balance, forward to upstream, and debit."""
-    pubkey_str = request.headers.get("X-Agent-Pubkey")
-    signature_str = request.headers.get("X-Agent-Signature")
-
-    if not pubkey_str or not signature_str:
-        return Response(
-            content=json.dumps(
-                {"error": "Payment Required (X-Agent-Pubkey or X-Agent-Signature missing)"}
-            ),
-            status_code=402,
-            headers={
-                "payment-required": "SIWS_SIGNATURE_REQUIRED",
-                "Content-Type": "application/json",
-            },
-        )
-
-    body_bytes = await request.body()
-    try:
-        pubkey = Pubkey.from_string(pubkey_str)
-        signature = Signature.from_string(signature_str)
-        if not signature.verify(pubkey, body_bytes):
-            return Response(
-                content=json.dumps({"error": "Invalid SIWS Signature"}),
-                status_code=401,
-                headers={"Content-Type": "application/json"},
-            )
-    except (ValueError, TypeError) as e:
-        return Response(
-            content=json.dumps({"error": f"SIWS Verification Failed: {e!s}"}),
-            status_code=401,
-            headers={"Content-Type": "application/json"},
-        )
-
-    current_balance = database.get_balance(pubkey_str)
-
-    if current_balance <= 0:
+    """Check balance, forward to upstream, extract real usage, and debit."""
+    # Check if agent has any balance at all
+    balances = database.get_all_balances(agent_pubkey)
+    total = sum(balances.values())
+    if total <= 0:
         return Response(
             content=json.dumps({"error": "Insufficient Deposit Balance"}),
             status_code=402,
             headers={"Content-Type": "application/json"},
         )
 
-    body = await request.json()
+    body_bytes = await request.body()
+    body = json.loads(body_bytes)
     model = body.get("model", "unknown")
     is_mock = request.headers.get("X-MOCK-UPSTREAM") == "true"
 
@@ -150,16 +188,18 @@ async def handle_proxy(
             "choices": [{"message": {"content": "Sovereign reply."}}],
         }
         usage = {"input_tokens": 15, "output_tokens": 25}
-        pricing = PRICING.get(model, {"input": 5000, "output": 15000})
-        cost = (
-            usage["input_tokens"] * pricing["input"] / 1000
-            + usage["output_tokens"] * pricing["output"] / 1000
-        )
-        database.update_balance(pubkey_str, -int(cost), "DEBIT", json.dumps(usage))
+        cost_usdc = _calculate_cost_usdc(usage, model)
+        debited_mint = _debit_agent(agent_pubkey, cost_usdc, json.dumps(usage))
+        if not debited_mint:
+            return Response(
+                content=json.dumps({"error": "Insufficient Deposit Balance"}),
+                status_code=402,
+                headers={"Content-Type": "application/json"},
+            )
         logger.info(
-            "Charged %d units. New balance: %d",
-            int(cost),
-            database.get_balance(pubkey_str),
+            "Charged %d USDC-equiv from %s",
+            cost_usdc,
+            debited_mint[:8],
         )
         return Response(
             content=json.dumps(output_data),
@@ -192,21 +232,25 @@ async def handle_proxy(
                 timeout=60.0,
             )
 
-            input_tokens = 10
-            output_tokens = 20
-            pricing = PRICING.get(model, {"input": 5000, "output": 15000})
-            cost = input_tokens * pricing["input"] / 1000 + output_tokens * pricing["output"] / 1000
-            database.update_balance(
-                pubkey_str,
-                -int(cost),
-                "DEBIT",
-                json.dumps({"input": input_tokens, "output": output_tokens}),
-            )
-            logger.info(
-                "Charged %d units. New balance: %d",
-                int(cost),
-                database.get_balance(pubkey_str),
-            )
+            # Extract real usage from upstream response
+            resp_data = json.loads(upstream_response.content)
+            raw_usage = resp_data.get("usage", {})
+            # Normalize: OpenAI uses prompt_tokens/completion_tokens
+            # Anthropic uses input_tokens/output_tokens
+            usage = {
+                "input_tokens": raw_usage.get("input_tokens") or raw_usage.get("prompt_tokens", 0),
+                "output_tokens": raw_usage.get("output_tokens")
+                or raw_usage.get("completion_tokens", 0),
+            }
+
+            cost_usdc = _calculate_cost_usdc(usage, model)
+            debited_mint = _debit_agent(agent_pubkey, cost_usdc, json.dumps(usage))
+            if debited_mint:
+                logger.info(
+                    "Charged %d USDC-equiv from %s",
+                    cost_usdc,
+                    debited_mint[:8],
+                )
 
             return Response(
                 content=upstream_response.content,

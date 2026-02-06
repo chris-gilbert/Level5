@@ -35,11 +35,13 @@ HELIUS_WS_URL = os.getenv(
 )
 
 # Anchor account discriminator for DepositAccount (first 8 bytes)
-# Generated from: sha256("account:DepositAccount")[:8]
 DEPOSIT_ACCOUNT_DISCRIMINATOR = b"\xd8\x92\x6f\x2a\x5c\x08\x4a\x3e"
 
-# Minimum size: 8-byte discriminator + 32-byte owner + 8-byte balance
-DEPOSIT_ACCOUNT_MIN_SIZE = 48
+# Account layout sizes
+# Legacy (SOL-only): discriminator(8) + owner(32) + balance(8) = 48
+DEPOSIT_ACCOUNT_LEGACY_SIZE = 48
+# V2 (multi-token): discriminator(8) + owner(32) + mint(32) + balance(8) = 80
+DEPOSIT_ACCOUNT_V2_SIZE = 80
 
 # Polling interval in seconds (fallback when WebSocket is down)
 POLL_INTERVAL = 5.0
@@ -51,19 +53,29 @@ MAX_BACKOFF = 60.0
 def parse_deposit_account(data: bytes) -> dict | None:
     """Parse an Anchor DepositAccount from raw account data.
 
-    Layout (after 8-byte discriminator):
-        - owner: Pubkey (32 bytes)
-        - balance: u64 (8 bytes)
+    Supports two layouts:
+        Legacy (48 bytes): discriminator(8) + owner(32) + balance(8)
+            → assumes SOL_MINT
+        V2 (80 bytes): discriminator(8) + owner(32) + mint(32) + balance(8)
+            → reads mint from data
     """
-    if len(data) < DEPOSIT_ACCOUNT_MIN_SIZE:
+    if len(data) < DEPOSIT_ACCOUNT_LEGACY_SIZE:
         return None
 
     owner_bytes = data[8:40]
-    balance = struct.unpack_from("<Q", data, 40)[0]
-
     owner = str(Pubkey.from_bytes(owner_bytes))
 
-    return {"owner": owner, "balance": balance}
+    if len(data) >= DEPOSIT_ACCOUNT_V2_SIZE:
+        # V2 layout: owner + mint + balance
+        mint_bytes = data[40:72]
+        mint = str(Pubkey.from_bytes(mint_bytes))
+        balance = struct.unpack_from("<Q", data, 72)[0]
+    else:
+        # Legacy layout: owner + balance (assume SOL)
+        mint = database.SOL_MINT
+        balance = struct.unpack_from("<Q", data, 40)[0]
+
+    return {"owner": owner, "mint": mint, "balance": balance}
 
 
 class LiquidMirror:
@@ -140,7 +152,7 @@ class LiquidMirror:
                 parsed = parse_deposit_account(raw_data)
                 if parsed:
                     self._watched_accounts[pubkey] = parsed["owner"]
-                    self._sync_balance(parsed["owner"], parsed["balance"])
+                    self._sync_balance(parsed["owner"], parsed["mint"], parsed["balance"])
 
             logger.info("Discovered %d deposit accounts", len(self._watched_accounts))
 
@@ -185,7 +197,7 @@ class LiquidMirror:
                     raw_data = base64.b64decode(value["data"][0])
                     parsed = parse_deposit_account(raw_data)
                     if parsed:
-                        self._sync_balance(parsed["owner"], parsed["balance"])
+                        self._sync_balance(parsed["owner"], parsed["mint"], parsed["balance"])
 
     async def _ws_loop(self) -> None:  # pragma: no cover
         """Subscribe to account changes via Helius WebSocket."""
@@ -229,7 +241,11 @@ class LiquidMirror:
                 confirm = json.loads(await ws.recv())
                 if "result" in confirm:
                     sub_ids[confirm["result"]] = account_addr
-                    logger.debug("Subscribed to %s (sub_id=%d)", account_addr, confirm["result"])
+                    logger.debug(
+                        "Subscribed to %s (sub_id=%d)",
+                        account_addr,
+                        confirm["result"],
+                    )
 
             # Listen for notifications
             while self._running:
@@ -244,21 +260,48 @@ class LiquidMirror:
                             raw_data = base64.b64decode(value["data"][0])
                             parsed = parse_deposit_account(raw_data)
                             if parsed:
-                                self._sync_balance(parsed["owner"], parsed["balance"])
+                                self._sync_balance(
+                                    parsed["owner"],
+                                    parsed["mint"],
+                                    parsed["balance"],
+                                )
                                 logger.info(
-                                    "WS update: %s balance=%d",
+                                    "WS update: %s mint=%s balance=%d",
                                     parsed["owner"][:8],
+                                    parsed["mint"][:8],
                                     parsed["balance"],
                                 )
 
-    def _sync_balance(self, owner_pubkey: str, on_chain_balance: int) -> None:
-        """Sync an on-chain balance to local SQLite."""
-        current = database.get_balance(owner_pubkey)
+    def _sync_balance(
+        self,
+        owner_pubkey: str,
+        token_mint: str,
+        on_chain_balance: int,
+    ) -> None:
+        """Sync an on-chain balance to local SQLite for a specific token.
+
+        On first deposit (delta > 0), auto-activates any pending API token.
+        """
+        current = database.get_balance(owner_pubkey, token_mint)
         delta = on_chain_balance - current
+
+        # Auto-activate pending tokens on first deposit
+        if delta > 0 and current == 0:
+            deposit_code = database.find_pending_token_for_pubkey(owner_pubkey)
+            if deposit_code:
+                api_token = database.activate_token(deposit_code, owner_pubkey)
+                if api_token:
+                    logger.info(
+                        "Auto-activated token %s for pubkey %s",
+                        api_token[:8],
+                        owner_pubkey[:8],
+                    )
+
         if delta != 0:
             tx_type = "MIRROR_DEPOSIT" if delta > 0 else "MIRROR_CORRECTION"
             database.update_balance(
                 owner_pubkey,
+                token_mint,
                 delta,
                 tx_type,
                 json.dumps(
@@ -270,8 +313,9 @@ class LiquidMirror:
                 ),
             )
             logger.info(
-                "Synced %s: %d -> %d (%s%d)",
+                "Synced %s [%s]: %d -> %d (%s%d)",
                 owner_pubkey[:8],
+                token_mint[:8],
                 current,
                 on_chain_balance,
                 "+" if delta > 0 else "",
