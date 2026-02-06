@@ -1,4 +1,4 @@
-# Level5: Sovereign AI Proxy 🛡️
+# Level5: Budget Management for AI Agents 💰
 
 **Stop babysitting your agent's credit card. Give them real budgets on Solana.**
 

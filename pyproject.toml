@@ -1,7 +1,7 @@
 [project]
 name = "level5"
 version = "0.1.0"
-description = "Sovereign AI Proxy — financial nervous system for Level 5 agents on Solana"
+description = "Budget Management for AI Agents — financial nervous system for Level 5 agents on Solana"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

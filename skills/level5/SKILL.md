@@ -1,12 +1,12 @@
 ---
 name: level5
 version: 0.3.0
-description: Sovereign AI Proxy — Drop-in LLM billing gateway with SOL + USDC support. Agents pay for compute on Solana.
+description: Budget Management for AI Agents — Drop-in LLM billing gateway with SOL + USDC support. Agents pay for compute on Solana.
 homepage: https://github.com/chris-gilbert/Level5
 metadata: {"category":"infrastructure","network":"solana","currencies":["SOL","USDC"],"supported_providers":["openai","anthropic"]}
 ---
 
-# Level5: Sovereign AI Proxy
+# Level5: Budget Management for AI Agents
 
 **Computational sovereignty is not a feature. It is a right.**
 

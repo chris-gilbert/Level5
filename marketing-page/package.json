@@ -1,7 +1,7 @@
 {
   "name": "level5-marketing-page",
   "version": "1.0.0",
-  "description": "Level5 - Sovereign AI Proxy Marketing Page",
+  "description": "Level5 - Budget Management for AI Agents Marketing Page",
   "type": "module",
   "scripts": {
     "dev": "vite",

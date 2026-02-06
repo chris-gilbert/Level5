@@ -1,4 +1,4 @@
-"""Level5 Sovereign AI Proxy — FastAPI application."""
+"""Level5 Budget Management for AI Agents — FastAPI application."""
 
 from __future__ import annotations
 

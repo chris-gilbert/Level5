@@ -1,6 +1,6 @@
 # Level5 Marketing Page
 
-A stunning, single-page marketing site for **Level5: Sovereign AI Proxy** built with TypeScript and Vite.
+A stunning, single-page marketing site for **Level5: Budget Management for AI Agents** built with TypeScript and Vite.
 
 ## 🎨 Design
 
