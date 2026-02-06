@@ -74,7 +74,7 @@ async def register_agent() -> dict[str, Any]:
     return {
         "api_token": api_token,
         "deposit_code": deposit_code,
-        "base_url": f"https://level5.100x.dev/proxy/{api_token}",
+        "base_url": f"https://api.level5.cloud/proxy/{api_token}",
         "status": "pending_deposit",
         "instructions": (
             f"To activate your API token, deposit SOL or USDC on-chain. "

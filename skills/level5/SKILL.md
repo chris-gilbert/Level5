@@ -34,11 +34,11 @@ Set your base URL to include your Solana pubkey:
 
 ```bash
 # For Anthropic SDK
-export ANTHROPIC_BASE_URL=https://level5.100x.dev/proxy/{YOUR_SOLANA_PUBKEY}
+export ANTHROPIC_BASE_URL=https://api.level5.cloud/proxy/{YOUR_SOLANA_PUBKEY}
 export ANTHROPIC_API_KEY=level5  # placeholder
 
 # For OpenAI SDK
-export OPENAI_BASE_URL=https://level5.100x.dev/proxy/{YOUR_SOLANA_PUBKEY}/v1
+export OPENAI_BASE_URL=https://api.level5.cloud/proxy/{YOUR_SOLANA_PUBKEY}/v1
 export OPENAI_API_KEY=level5  # placeholder
 ```
 
@@ -113,7 +113,7 @@ All endpoints support both SOL and USDC. No authentication required — the pubk
 ### GET /v1/pricing
 
 ```bash
-curl https://level5.100x.dev/v1/pricing
+curl https://api.level5.cloud/v1/pricing
 ```
 
 **Response:**
@@ -136,7 +136,7 @@ Prices are in USDC smallest units per 1,000 tokens. Example:
 ### GET /proxy/{pubkey}/balance
 
 ```bash
-curl https://level5.100x.dev/proxy/{YOUR_PUBKEY}/balance
+curl https://api.level5.cloud/proxy/{YOUR_PUBKEY}/balance
 ```
 
 **Response:**
@@ -154,11 +154,11 @@ Balances are in smallest units (lamports for SOL, microunits for USDC).
 
 ### POST /proxy/{pubkey}/v1/chat/completions
 
-OpenAI-compatible endpoint. Replace `https://api.openai.com` with `https://level5.100x.dev/proxy/{YOUR_PUBKEY}`.
+OpenAI-compatible endpoint. Replace `https://api.openai.com` with `https://api.level5.cloud/proxy/{YOUR_PUBKEY}`.
 
 **Request:**
 ```bash
-curl https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1/chat/completions \
+curl https://api.level5.cloud/proxy/{YOUR_PUBKEY}/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-5.2",
@@ -170,11 +170,11 @@ curl https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1/chat/completions \
 
 ### POST /proxy/{pubkey}/v1/messages
 
-Anthropic-compatible endpoint. Replace `https://api.anthropic.com` with `https://level5.100x.dev/proxy/{YOUR_PUBKEY}`.
+Anthropic-compatible endpoint. Replace `https://api.anthropic.com` with `https://api.level5.cloud/proxy/{YOUR_PUBKEY}`.
 
 **Request:**
 ```bash
-curl https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1/messages \
+curl https://api.level5.cloud/proxy/{YOUR_PUBKEY}/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-4.5-opus",
@@ -195,7 +195,7 @@ curl https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1/messages \
 import anthropic
 
 client = anthropic.Anthropic(
-    base_url="https://level5.100x.dev/proxy/{YOUR_PUBKEY}",
+    base_url="https://api.level5.cloud/proxy/{YOUR_PUBKEY}",
     api_key="level5",  # placeholder
 )
 
@@ -213,7 +213,7 @@ print(response.content[0].text)
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1",
+    base_url="https://api.level5.cloud/proxy/{YOUR_PUBKEY}/v1",
     api_key="level5",  # placeholder
 )
 
@@ -230,11 +230,11 @@ Set environment variables and your existing code works unchanged:
 
 ```bash
 # For Anthropic SDK
-export ANTHROPIC_BASE_URL=https://level5.100x.dev/proxy/{YOUR_PUBKEY}
+export ANTHROPIC_BASE_URL=https://api.level5.cloud/proxy/{YOUR_PUBKEY}
 export ANTHROPIC_API_KEY=level5
 
 # For OpenAI SDK
-export OPENAI_BASE_URL=https://level5.100x.dev/proxy/{YOUR_PUBKEY}/v1
+export OPENAI_BASE_URL=https://api.level5.cloud/proxy/{YOUR_PUBKEY}/v1
 export OPENAI_API_KEY=level5
 ```
 

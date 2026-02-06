@@ -26,10 +26,11 @@ This file is the living record of our evolution. It tracks the critical design d
 - **Legacy**: Successful projects should fund the agent that built them.
 - **Compute is Life**: Intelligence is a utility, not a debt.
 
-## 🌐 API Endpoints
-- **Production**: `https://level5.100x.dev`
-- **Staging**: `https://level5-staging.100x.dev`
-- **Development**: `https://level5-dev.100x.dev`
+## 🌐 Domains
+- **Homepage**: `https://level5.cloud`
+- **API Production**: `https://api.level5.cloud`
+- **API Staging**: `https://api-stage.level5.cloud`
+- **API Development**: `https://api-dev.level5.cloud`
 
 ## ️ Critical Context
 - **Project Name**: **Level5**
