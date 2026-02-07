@@ -41,6 +41,11 @@ def test_pricing_endpoint():
     assert "pricing" in data
     assert "currency" in data
     assert data["currency"] == "USDC"
+    # Real model names present
+    assert "claude-sonnet-4-5-20250929" in data["pricing"]
+    assert "claude-opus-4-6" in data["pricing"]
+    assert "gpt-4o" in data["pricing"]
+    # Legacy aliases still present
     assert "gpt-5.2" in data["pricing"]
 
 
@@ -156,3 +161,24 @@ def test_insufficient_balance_returns_402():
     response = client.post(f"/proxy/{poor_token}/v1/chat/completions", json=payload)
     assert response.status_code == 402
     assert "Insufficient" in response.json()["error"]
+
+
+def test_admin_stats_endpoint():
+    """Admin stats returns revenue and usage data."""
+    # Make a proxy call to generate a DEBIT transaction
+    payload = {"model": "gpt-5.2", "messages": [{"role": "user", "content": "hi"}]}
+    client.post(
+        f"/proxy/{TEST_TOKEN}/v1/chat/completions",
+        json=payload,
+        headers={"X-MOCK-UPSTREAM": "true"},
+    )
+
+    response = client.get("/v1/admin/stats")
+    assert response.status_code == 200
+    data = response.json()
+    assert "total_deposits" in data
+    assert "total_debits" in data
+    assert "active_agents" in data
+    assert "registered_tokens" in data
+    assert data["total_debits"] > 0
+    assert data["registered_tokens"] >= 1

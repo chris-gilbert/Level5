@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from level5.proxy import database
 from level5.proxy.mirror import get_mirror
@@ -22,6 +24,9 @@ from level5.proxy.mirror import get_mirror
 load_dotenv()
 
 logger = logging.getLogger("level5.proxy")
+
+# Timeout tuned for streaming — long reads for LLM generation
+UPSTREAM_TIMEOUT = httpx.Timeout(connect=10, read=300, write=10, pool=10)
 
 
 @asynccontextmanager
@@ -42,9 +47,18 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # Pricing per 1k tokens (USDC smallest units, 6 decimals)
 PRICING: dict[str, dict[str, int]] = {
+    # Anthropic models
+    "claude-sonnet-4-5-20250929": {"input": 3000, "output": 15000},
+    "claude-opus-4-6": {"input": 15000, "output": 75000},
+    "claude-3-5-haiku-20241022": {"input": 800, "output": 4000},
+    # OpenAI models
+    "gpt-4o": {"input": 2500, "output": 10000},
+    # Legacy aliases (backward compat)
     "gpt-5.2": {"input": 1500, "output": 4500},
     "claude-4.5-opus": {"input": 3000, "output": 15000},
 }
+
+DEFAULT_PRICING = {"input": 5000, "output": 15000}
 
 
 @app.get("/health")
@@ -95,6 +109,45 @@ async def get_balance(agent_token: str) -> dict[str, Any]:
     return {"pubkey": pubkey, "balances": balances}
 
 
+@app.get("/v1/admin/stats")
+async def admin_stats() -> dict[str, Any]:
+    """Revenue and usage statistics for the proxy operator."""
+    conn = database.get_db_connection()
+    try:
+        # Total deposits
+        row = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS total"
+            " FROM transactions WHERE type = 'MIRROR_DEPOSIT'",
+        ).fetchone()
+        total_deposits = row["total"]
+
+        # Total debits
+        row = conn.execute(
+            "SELECT COALESCE(SUM(ABS(amount)), 0) AS total FROM transactions WHERE type = 'DEBIT'",
+        ).fetchone()
+        total_debits = row["total"]
+
+        # Active agents (have at least one positive balance)
+        row = conn.execute(
+            "SELECT COUNT(DISTINCT pubkey) AS cnt FROM agents WHERE balance > 0",
+        ).fetchone()
+        active_agents = row["cnt"]
+
+        # Total agents registered
+        row = conn.execute("SELECT COUNT(*) AS cnt FROM api_tokens").fetchone()
+        registered_tokens = row["cnt"]
+
+        return {
+            "total_deposits": total_deposits,
+            "total_debits": total_debits,
+            "net_revenue": total_debits,
+            "active_agents": active_agents,
+            "registered_tokens": registered_tokens,
+        }
+    finally:
+        conn.close()
+
+
 @app.post("/proxy/{agent_token}/v1/chat/completions")
 async def openai_proxy(agent_token: str, request: Request) -> Response:
     pubkey = database.get_pubkey_from_token(agent_token)
@@ -128,7 +181,7 @@ def _calculate_cost_usdc(
     model: str,
 ) -> int:
     """Calculate cost in USDC smallest units for a given usage."""
-    pricing = PRICING.get(model, {"input": 5000, "output": 15000})
+    pricing = PRICING.get(model, DEFAULT_PRICING)
     return int(
         usage["input_tokens"] * pricing["input"] / 1000
         + usage["output_tokens"] * pricing["output"] / 1000
@@ -160,6 +213,178 @@ def _debit_agent(pubkey: str, cost_usdc: int, usage_json: str) -> str | None:
     return None
 
 
+def _build_upstream_headers(
+    upstream_url: str,
+    api_key: str,
+    request: Request,
+) -> dict[str, str]:
+    """Build headers for the upstream API call."""
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+
+    if "openai" in upstream_url:
+        headers["Authorization"] = f"Bearer {api_key}"
+    elif "anthropic" in upstream_url:
+        headers["x-api-key"] = api_key
+        # Forward client's anthropic-version or use default
+        anthropic_version = request.headers.get("anthropic-version", "2023-06-01")
+        headers["anthropic-version"] = anthropic_version
+
+    return headers
+
+
+def _parse_anthropic_sse_usage(events_data: list[dict[str, Any]]) -> dict[str, int]:
+    """Extract usage from Anthropic SSE events."""
+    input_tokens = 0
+    output_tokens = 0
+    for event in events_data:
+        if event.get("type") == "message_start":
+            msg = event.get("message", {})
+            usage = msg.get("usage", {})
+            input_tokens += usage.get("input_tokens", 0)
+        elif event.get("type") == "message_delta":
+            usage = event.get("usage", {})
+            output_tokens += usage.get("output_tokens", 0)
+    return {"input_tokens": input_tokens, "output_tokens": output_tokens}
+
+
+def _parse_openai_sse_usage(events_data: list[dict[str, Any]]) -> dict[str, int]:
+    """Extract usage from OpenAI SSE events."""
+    input_tokens = 0
+    output_tokens = 0
+    for event in events_data:
+        usage = event.get("usage")
+        if usage:
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+    return {"input_tokens": input_tokens, "output_tokens": output_tokens}
+
+
+def _mock_anthropic_sse_body() -> str:
+    """Generate mock Anthropic SSE events for testing."""
+    events = [
+        {
+            "type": "message_start",
+            "message": {
+                "id": "mock-msg-001",
+                "type": "message",
+                "role": "assistant",
+                "usage": {"input_tokens": 15, "output_tokens": 0},
+            },
+        },
+        {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "text_delta", "text": "Sovereign reply."},
+        },
+        {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 25},
+        },
+    ]
+    lines = []
+    for event in events:
+        lines.append(f"event: {event['type']}")
+        lines.append(f"data: {json.dumps(event)}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def _mock_openai_sse_body() -> str:
+    """Generate mock OpenAI SSE events for testing."""
+    events = [
+        {
+            "id": "mock-chatcmpl-001",
+            "object": "chat.completion.chunk",
+            "choices": [{"index": 0, "delta": {"content": "Sovereign "}}],
+        },
+        {
+            "id": "mock-chatcmpl-001",
+            "object": "chat.completion.chunk",
+            "choices": [{"index": 0, "delta": {"content": "reply."}}],
+            "usage": {"prompt_tokens": 15, "completion_tokens": 25},
+        },
+    ]
+    lines = []
+    for event in events:
+        lines.append(f"data: {json.dumps(event)}")
+        lines.append("")
+    lines.append("data: [DONE]")
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+async def _handle_mock_streaming(
+    agent_pubkey: str,
+    model: str,
+    upstream_url: str,
+) -> Response:
+    """Return mock SSE events for testing streaming."""
+    is_anthropic = "anthropic" in upstream_url
+    if is_anthropic:
+        sse_body = _mock_anthropic_sse_body()
+        usage = {"input_tokens": 15, "output_tokens": 25}
+    else:
+        sse_body = _mock_openai_sse_body()
+        usage = {"input_tokens": 15, "output_tokens": 25}
+
+    cost_usdc = _calculate_cost_usdc(usage, model)
+    debited_mint = _debit_agent(agent_pubkey, cost_usdc, json.dumps(usage))
+    if not debited_mint:
+        return Response(
+            content=json.dumps({"error": "Insufficient Deposit Balance"}),
+            status_code=402,
+            headers={"Content-Type": "application/json"},
+        )
+    logger.info("Streaming charged %d USDC-equiv from %s", cost_usdc, debited_mint[:8])
+    return Response(
+        content=sse_body,
+        status_code=200,
+        media_type="text/event-stream",
+    )
+
+
+async def _handle_streaming(  # pragma: no cover
+    agent_pubkey: str,
+    body: dict[str, Any],
+    model: str,
+    upstream_url: str,
+    headers: dict[str, str],
+) -> StreamingResponse:
+    """Stream SSE from upstream, parse usage, debit after completion."""
+    is_anthropic = "anthropic" in upstream_url
+    collected_events: list[dict[str, Any]] = []
+
+    async def event_generator() -> AsyncGenerator[bytes]:
+        async with (
+            httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client,
+            client.stream("POST", upstream_url, json=body, headers=headers) as resp,
+        ):
+            async for line in resp.aiter_lines():
+                # Collect event data for usage parsing
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str.strip() != "[DONE]":
+                        with contextlib.suppress(json.JSONDecodeError):
+                            collected_events.append(json.loads(data_str))
+                yield (line + "\n").encode()
+
+        # After stream completes, parse usage and debit
+        if is_anthropic:
+            usage = _parse_anthropic_sse_usage(collected_events)
+        else:
+            usage = _parse_openai_sse_usage(collected_events)
+        cost_usdc = _calculate_cost_usdc(usage, model)
+        debited_mint = _debit_agent(agent_pubkey, cost_usdc, json.dumps(usage))
+        if debited_mint:
+            logger.info("Streaming charged %d USDC-equiv from %s", cost_usdc, debited_mint[:8])
+
+    return StreamingResponse(
+        content=event_generator(),
+        media_type="text/event-stream",
+    )
+
+
 async def handle_proxy(
     agent_pubkey: str,
     request: Request,
@@ -181,8 +406,13 @@ async def handle_proxy(
     body = json.loads(body_bytes)
     model = body.get("model", "unknown")
     is_mock = request.headers.get("X-MOCK-UPSTREAM") == "true"
+    is_streaming = body.get("stream", False)
 
+    # --- Mock path ---
     if is_mock:
+        if is_streaming:
+            return await _handle_mock_streaming(agent_pubkey, model, upstream_url)
+
         output_data = {
             "id": "mock-123",
             "choices": [{"message": {"content": "Sovereign reply."}}],
@@ -207,29 +437,25 @@ async def handle_proxy(
             headers={"Content-Type": "application/json"},
         )
 
-    if not api_key:
+    # --- Real upstream path (requires API key) ---
+    if not api_key:  # pragma: no cover
         raise HTTPException(
             status_code=500,
             detail="Upstream API key not configured. Check your .env file.",
         )
 
-    headers = {
-        "Content-Type": "application/json",
-        **({"Authorization": f"Bearer {api_key}"} if "openai" in upstream_url else {}),
-        **(
-            {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
-            if "anthropic" in upstream_url
-            else {}
-        ),
-    }
+    headers = _build_upstream_headers(upstream_url, api_key, request)
 
-    async with httpx.AsyncClient() as client:
+    if is_streaming:  # pragma: no cover
+        return await _handle_streaming(agent_pubkey, body, model, upstream_url, headers)
+
+    # --- Synchronous (non-streaming) real upstream path ---
+    async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client:  # pragma: no cover
         try:
             upstream_response = await client.post(
                 upstream_url,
                 json=body,
                 headers=headers,
-                timeout=60.0,
             )
 
             # Extract real usage from upstream response
