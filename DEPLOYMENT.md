@@ -13,8 +13,8 @@ Install these on every machine that will build or run Level5:
 | Python | >= 3.10 | System package manager or pyenv |
 | uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | Rust + Cargo | stable | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
-| Solana CLI | >= 1.18 | `sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"` |
-| Anchor CLI | >= 0.30 | `cargo install --git https://github.com/coral-xyz/anchor avm && avm install latest && avm use latest` |
+| Solana CLI | >= 3.0 | `sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"` |
+| Anchor CLI | >= 0.32 | `cargo install --git https://github.com/coral-xyz/anchor avm && avm install latest && avm use latest` |
 | Node.js | >= 18 | For Anchor tests only |
 
 ---
@@ -52,8 +52,8 @@ solana airdrop 10   # fund the wallet with 10 SOL
 ### 1.4 Build and deploy the contract
 
 ```bash
+make contract-build
 cd contracts/sovereign-contract
-anchor build
 anchor deploy --provider.cluster localnet
 cd ../..
 ```
@@ -203,12 +203,11 @@ From your development machine (or the server):
 solana config set --url devnet
 solana airdrop 5                       # fund deployer wallet
 
+# Update Anchor.toml: [provider] cluster = "devnet"
+make contract-build
 cd contracts/sovereign-contract
-
-# Update Anchor.toml for devnet
-# Change [provider] cluster = "devnet"
-anchor build
 anchor deploy --provider.cluster devnet
+cd ../..
 ```
 
 Note the deployed program ID. It should remain `C4UAHoYgqZ7dmS4JypAwQcJ1YzYVM86S2eA1PTUthzve` if you use the same keypair.
@@ -393,15 +392,15 @@ Use a provider with persistent disk (SQLite is the only state). Enable automated
 ```bash
 solana config set --url mainnet-beta
 
-cd contracts/sovereign-contract
-
 # Update Anchor.toml:
 #   [provider]
 #   cluster = "mainnet-beta"
 #   wallet = "/path/to/your/mainnet-deployer-keypair.json"
 
-anchor build
+make contract-build
+cd contracts/sovereign-contract
 anchor deploy --provider.cluster mainnet-beta
+cd ../..
 ```
 
 Save the deployer keypair securely. You will need it for future program upgrades.
@@ -624,9 +623,10 @@ curl -sf https://YOUR_DOMAIN/health | jq .
 For contract upgrades (requires the original deployer keypair):
 
 ```bash
+make contract-build
 cd contracts/sovereign-contract
-anchor build
 anchor upgrade --provider.cluster TARGET_CLUSTER --program-id C4UAHoYgqZ7dmS4JypAwQcJ1YzYVM86S2eA1PTUthzve
+cd ../..
 ```
 
 ---

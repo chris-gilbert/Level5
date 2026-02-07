@@ -60,6 +60,17 @@ PRICING: dict[str, dict[str, int]] = {
 
 DEFAULT_PRICING = {"input": 5000, "output": 15000}
 
+# Transport-level headers that become invalid after httpx auto-decompresses
+# the response body.  Relaying these causes ZlibError on the client side.
+_STRIP_HEADERS = frozenset(
+    {
+        "content-encoding",
+        "transfer-encoding",
+        "content-length",
+        "connection",
+    }
+)
+
 
 @app.get("/health")
 async def health() -> dict[str, str]:
@@ -359,10 +370,6 @@ async def _handle_streaming(  # pragma: no cover
     is_anthropic = "anthropic" in upstream_url
     collected_events: list[dict[str, Any]] = []
 
-    # Prevent upstream from compressing the SSE stream — avoids zlib
-    # decompression issues when relaying chunked+gzip responses.
-    headers["Accept-Encoding"] = "identity"
-
     client = httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT)
     resp = await client.send(
         client.build_request("POST", upstream_url, json=body, headers=headers),
@@ -476,6 +483,10 @@ async def handle_proxy(
 
     headers = _build_upstream_headers(upstream_url, api_key, request)
 
+    # Prevent upstream from compressing — httpx auto-decompresses but we
+    # must not relay the now-invalid Content-Encoding header to the client.
+    headers["Accept-Encoding"] = "identity"
+
     if is_streaming:  # pragma: no cover
         return await _handle_streaming(agent_pubkey, body, model, upstream_url, headers)
 
@@ -508,10 +519,15 @@ async def handle_proxy(
                     debited_mint[:8],
                 )
 
+            relay_headers = {
+                k: v
+                for k, v in upstream_response.headers.items()
+                if k.lower() not in _STRIP_HEADERS
+            }
             return Response(
                 content=upstream_response.content,
                 status_code=upstream_response.status_code,
-                headers=dict(upstream_response.headers),
+                headers=relay_headers,
             )
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"Upstream error: {e!s}") from e

@@ -1,5 +1,7 @@
 [toolchain]
 package_manager = "yarn"
+anchor_version = "0.32.1"  # Requires avm installed
+solana_version = "3.0.10"  # Sets solana-cli version
 
 [features]
 resolution = true

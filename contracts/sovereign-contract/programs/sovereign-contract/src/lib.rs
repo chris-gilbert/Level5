@@ -37,7 +37,10 @@ pub mod sovereign_contract {
         )?;
 
         let deposit_account = &mut ctx.accounts.deposit_account;
-        deposit_account.balance += amount;
+        deposit_account.balance = deposit_account
+            .balance
+            .checked_add(amount)
+            .ok_or(SovereignError::BalanceOverflow)?;
 
         emit!(DepositEvent {
             owner: *ctx.accounts.owner.key,
@@ -62,14 +65,17 @@ pub mod sovereign_contract {
             SovereignError::InsufficientBalance
         );
 
-        // Transfer SOL from deposit_account to recipient
+        // Transfer SOL from deposit_account to owner
         let deposit_info = deposit_account.to_account_info();
-        let recipient_info = ctx.accounts.recipient.to_account_info();
+        let owner_info = ctx.accounts.owner.to_account_info();
 
         **deposit_info.try_borrow_mut_lamports()? -= amount;
-        **recipient_info.try_borrow_mut_lamports()? += amount;
+        **owner_info.try_borrow_mut_lamports()? += amount;
 
-        deposit_account.balance -= amount;
+        deposit_account.balance = deposit_account
+            .balance
+            .checked_sub(amount)
+            .ok_or(SovereignError::InsufficientBalance)?;
 
         emit!(WithdrawEvent {
             owner: *ctx.accounts.owner.key,
@@ -117,7 +123,10 @@ pub mod sovereign_contract {
         token::transfer_checked(cpi_ctx, amount, decimals)?;
 
         let deposit_account = &mut ctx.accounts.deposit_account;
-        deposit_account.balance += amount;
+        deposit_account.balance = deposit_account
+            .balance
+            .checked_add(amount)
+            .ok_or(SovereignError::BalanceOverflow)?;
 
         emit!(DepositEvent {
             owner: *ctx.accounts.owner.key,
@@ -163,7 +172,10 @@ pub mod sovereign_contract {
         );
         token::transfer_checked(cpi_ctx, amount, decimals)?;
 
-        deposit_account.balance -= amount;
+        deposit_account.balance = deposit_account
+            .balance
+            .checked_sub(amount)
+            .ok_or(SovereignError::InsufficientBalance)?;
 
         emit!(WithdrawEvent {
             owner: *ctx.accounts.owner.key,
@@ -177,6 +189,40 @@ pub mod sovereign_contract {
             amount,
             deposit_account.balance
         );
+        Ok(())
+    }
+
+    /// Close a SOL deposit account and reclaim rent to the owner.
+    /// Account must have zero balance.
+    pub fn close_account(_ctx: Context<CloseAccount>) -> Result<()> {
+        msg!("SOL deposit account closed");
+        Ok(())
+    }
+
+    /// Close a token deposit account and its vault ATA, reclaim rent to owner.
+    /// Account must have zero balance.
+    pub fn close_token_account(ctx: Context<CloseTokenAccount>) -> Result<()> {
+        let deposit_account = &ctx.accounts.deposit_account;
+
+        // PDA signer seeds to close the vault token account
+        let deposit_key = deposit_account.key();
+        let seeds: &[&[u8]] = &[deposit_key.as_ref()];
+        let (_, bump) = Pubkey::find_program_address(seeds, &crate::ID);
+        let signer_seeds: &[&[&[u8]]] = &[&[deposit_key.as_ref(), &[bump]]];
+
+        let cpi_accounts = token::CloseAccount {
+            account: ctx.accounts.vault_token_account.to_account_info(),
+            destination: ctx.accounts.owner.to_account_info(),
+            authority: deposit_account.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            cpi_accounts,
+            signer_seeds,
+        );
+        token::close_account(cpi_ctx)?;
+
+        msg!("Token deposit account and vault closed");
         Ok(())
     }
 }
@@ -207,10 +253,6 @@ pub struct Withdraw<'info> {
     pub deposit_account: Account<'info, DepositAccount>,
     #[account(mut)]
     pub owner: Signer<'info>,
-    /// The recipient of the SOL withdrawal (can be the owner or another account).
-    /// CHECK: Any valid system account can receive SOL.
-    #[account(mut)]
-    pub recipient: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -277,6 +319,40 @@ pub struct WithdrawToken<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+#[derive(Accounts)]
+pub struct CloseAccount<'info> {
+    #[account(
+        mut,
+        has_one = owner,
+        constraint = deposit_account.balance == 0 @ SovereignError::NonZeroBalance,
+        close = owner,
+    )]
+    pub deposit_account: Account<'info, DepositAccount>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CloseTokenAccount<'info> {
+    #[account(
+        mut,
+        has_one = owner,
+        constraint = deposit_account.balance == 0 @ SovereignError::NonZeroBalance,
+        close = owner,
+    )]
+    pub deposit_account: Account<'info, DepositAccount>,
+    pub mint: Account<'info, Mint>,
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = deposit_account,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
+
 // ── State ────────────────────────────────────────────────────────────
 
 /// Deposit account tracking balance for a single token per owner.
@@ -312,4 +388,8 @@ pub struct WithdrawEvent {
 pub enum SovereignError {
     #[msg("Insufficient balance for withdrawal")]
     InsufficientBalance,
+    #[msg("Balance overflow")]
+    BalanceOverflow,
+    #[msg("Cannot close account with non-zero balance")]
+    NonZeroBalance,
 }
