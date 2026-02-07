@@ -70,6 +70,12 @@ ignore = [
     "INP001",   # implicit namespace package
     "ANN",      # annotations optional in scripts
 ]
+"scripts/**/*.py" = [
+    "T20",      # print statements OK in scripts
+    "INP001",   # implicit namespace package
+    "ANN",      # annotations optional in scripts
+    "S310",     # urllib.request.urlopen OK in local dev scripts
+]
 "src/level5/proxy/monitor.py" = [
     "ALL",      # legacy file, excluded from coverage — pending rewrite
 ]

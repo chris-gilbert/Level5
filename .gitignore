@@ -14,6 +14,7 @@ htmlcov/
 
 # Environment / Secrets
 .env
+proxy.env
 .colosseum_credentials.json
 .omc
 

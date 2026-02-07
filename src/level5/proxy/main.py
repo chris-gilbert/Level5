@@ -225,9 +225,13 @@ def _build_upstream_headers(
         headers["Authorization"] = f"Bearer {api_key}"
     elif "anthropic" in upstream_url:
         headers["x-api-key"] = api_key
-        # Forward client's anthropic-version or use default
-        anthropic_version = request.headers.get("anthropic-version", "2023-06-01")
-        headers["anthropic-version"] = anthropic_version
+        # Forward all anthropic-* headers from the client (version, beta features, etc.)
+        for key, value in request.headers.items():
+            if key.lower().startswith("anthropic-"):
+                headers[key.lower()] = value
+        # Ensure anthropic-version is always present
+        if "anthropic-version" not in headers:
+            headers["anthropic-version"] = "2023-06-01"
 
     return headers
 
@@ -490,7 +494,7 @@ async def handle_proxy(
 def main() -> None:
     import uvicorn  # noqa: PLC0415
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)  # noqa: S104
+    uvicorn.run(app, host="0.0.0.0", port=18515)  # noqa: S104
 
 
 if __name__ == "__main__":

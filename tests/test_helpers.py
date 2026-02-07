@@ -91,6 +91,21 @@ def test_build_upstream_headers_anthropic_default_version():
     assert headers["anthropic-version"] == "2023-06-01"
 
 
+def test_build_upstream_headers_forwards_anthropic_beta():
+    mock_request = MagicMock()
+    mock_request.headers = {
+        "anthropic-version": "2025-01-01",
+        "anthropic-beta": "context-management-2025-01-01",
+    }
+    headers = _build_upstream_headers(
+        "https://api.anthropic.com/v1/messages",
+        "ant-test-key",
+        mock_request,
+    )
+    assert headers["anthropic-version"] == "2025-01-01"
+    assert headers["anthropic-beta"] == "context-management-2025-01-01"
+
+
 def test_mock_anthropic_sse_body_format():
     body = _mock_anthropic_sse_body()
     assert "event: message_start" in body

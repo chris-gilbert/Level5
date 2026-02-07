@@ -93,36 +93,95 @@ make lint          # ruff check + format
 
 ### 1.7 Start the proxy
 
+Delete any `sovereign_proxy.db` left over from an older version — the schema has changed and `CREATE TABLE IF NOT EXISTS` won't migrate it:
+
 ```bash
+rm -f sovereign_proxy.db
 make serve
-# or: uv run uvicorn level5.proxy.main:app --reload --host 0.0.0.0 --port 8000
+# or: uv run uvicorn level5.proxy.main:app --reload --host 0.0.0.0 --port 18515
 ```
+
+The server creates a fresh database on startup.
 
 ### 1.8 End-to-end smoke test
 
+In a second terminal, run the setup script. It registers an agent, seeds a balance, and writes a `proxy.env` file you can source.
+
 ```bash
-# Register
-curl -s -X POST http://localhost:8000/v1/register | jq .
+make smoke-setup
+# or: uv run python scripts/smoke_setup.py --proxy-url http://localhost:18515
+```
 
-# Seed balance manually (no on-chain deposit needed for local dev)
-uv run python -c "
-from level5.proxy import database
-database.init_db()
-database.update_balance('test-pubkey', database.USDC_MINT, 10_000_000, 'MANUAL_SEED')
-database.activate_token('YOUR_DEPOSIT_CODE', 'test-pubkey')
-"
+Then source it and use Claude Code through the proxy:
 
-# Set env vars and use Claude Code through the proxy
-export ANTHROPIC_BASE_URL=http://localhost:8000/proxy/YOUR_API_TOKEN
-export ANTHROPIC_API_KEY=level5
+```bash
+source proxy.env
+
+# Verify balance
+curl -s "http://localhost:18515/proxy/${LEVEL5_API_TOKEN}/balance" | jq .
+
+# Use Claude Code — all requests route through the proxy
 claude "What is the capital of France?"
 
-# Check balance
-curl -s http://localhost:8000/proxy/YOUR_API_TOKEN/balance | jq .
-
-# Check stats
-curl -s http://localhost:8000/v1/admin/stats | jq .
+# Check revenue stats
+curl -s http://localhost:18515/v1/admin/stats | jq .
 ```
+
+### 1.9 Test the Liquid Mirror (on-chain deposit flow)
+
+The Liquid Mirror polls `getProgramAccounts` via RPC and subscribes via WebSocket to detect on-chain deposits. The smoke test above seeds balances directly in SQLite (bypassing the chain). This section tests the real on-chain path against the local validator.
+
+**Prerequisites:** The proxy must be running (`make serve`), the local validator must be running (`solana-test-validator`), and the contract must be deployed (step 1.4).
+
+#### 1.9.1 Register an agent and note the deposit code
+
+```bash
+curl -s -X POST http://localhost:18515/v1/register | jq .
+```
+
+Save the `api_token` and `deposit_code` from the response.
+
+#### 1.9.2 Create a deposit account and deposit SOL on-chain
+
+Use the test deposit script to initialize a deposit account and deposit 1 SOL:
+
+```bash
+make test-deposit
+# or: cd contracts/sovereign-contract && node ../../scripts/test_deposit.js
+```
+
+The script generates a fresh deposit keypair, initializes the account on-chain, and deposits 1 SOL (1,000,000,000 lamports). It uses `ANCHOR_PROVIDER_URL` and `ANCHOR_WALLET` from your Solana CLI config.
+
+#### 1.9.3 Watch the mirror detect the deposit
+
+The mirror polls every 5 seconds. Watch the proxy logs for sync messages:
+
+```
+Liquid Mirror starting | rpc=http://localhost:8899 | program=C4UAHo...
+Synced XXXXXXXX [So111111]: 0 -> 1000000000 (+1000000000)
+Auto-activated token XXXXXXXX for pubkey XXXXXXXX
+```
+
+If you don't see the log, the mirror may not have discovered the new account yet. It discovers accounts on startup and every poll cycle. You can restart the proxy to trigger a fresh discovery.
+
+#### 1.9.4 Verify the balance appeared via the API
+
+```bash
+# Replace with your api_token from step 1.9.1
+curl -s "http://localhost:18515/proxy/YOUR_API_TOKEN/balance" | jq .
+```
+
+Expected: a `balances` object containing `So11111111111111111111111111111111111111112` with the deposited amount.
+
+#### 1.9.5 What to check if the mirror isn't working
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| No accounts discovered | Contract not deployed or wrong program ID | Check `SOVEREIGN_CONTRACT_ADDRESS` in `.env` matches `declare_id!()` |
+| Balance stays at 0 | Deposit account created but not discovered yet | Restart the proxy to trigger `_discover_accounts()` |
+| WebSocket errors in logs | Local validator WS on different port | Confirm `HELIUS_WS_URL=ws://localhost:8900` |
+| `Poll error, backing off` | RPC URL wrong | Confirm `HELIUS_RPC_URL=http://localhost:8899` |
+| Token not auto-activated | No pending token matched | Ensure you called `/v1/register` before depositing |
 
 ---
 
@@ -196,7 +255,7 @@ Type=simple
 User=level5
 WorkingDirectory=/opt/level5
 EnvironmentFile=/opt/level5/.env
-ExecStart=/opt/level5/.venv/bin/uvicorn level5.proxy.main:app --host 127.0.0.1 --port 8000
+ExecStart=/opt/level5/.venv/bin/uvicorn level5.proxy.main:app --host 127.0.0.1 --port 18515
 Restart=always
 RestartSec=5
 
@@ -231,7 +290,7 @@ server {
     server_name staging.level5.cloud;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:18515;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -267,6 +326,48 @@ curl https://staging.level5.cloud/health
 curl -X POST https://staging.level5.cloud/v1/register | jq .
 # → {"api_token":"...","deposit_code":"...","base_url":"..."}
 ```
+
+### 2.9 Test the Liquid Mirror on devnet
+
+On devnet the mirror connects to Helius for both RPC polling and WebSocket subscriptions. This tests the real Helius integration.
+
+#### 2.9.1 Register and deposit on devnet
+
+```bash
+# 1. Register
+curl -s -X POST https://staging.level5.cloud/v1/register | jq .
+# Save api_token and deposit_code
+
+# 2. Fund your wallet on devnet
+solana config set --url devnet
+solana airdrop 2
+
+# 3. Create a deposit account and deposit SOL
+# Use the same Anchor script from section 1.9.2, but with:
+#   solana config set --url devnet
+# The contract must already be deployed to devnet (step 2.2).
+```
+
+#### 2.9.2 Verify the mirror synced
+
+```bash
+# Check server logs
+sudo journalctl -u level5 --since "5 minutes ago" | grep -i "synced\|mirror\|activated"
+
+# Check balance via API
+curl -s "https://staging.level5.cloud/proxy/YOUR_API_TOKEN/balance" | jq .
+```
+
+The mirror should discover the deposit within one poll cycle (5 seconds) or instantly via the Helius WebSocket.
+
+#### 2.9.3 Staging mirror troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| No accounts discovered | Helius API key invalid or wrong cluster | Verify `HELIUS_API_KEY` and that URLs use `devnet` |
+| WebSocket disconnects | Helius free tier rate limits | Check `journalctl` for backoff messages; upgrade Helius plan |
+| Balance shows on-chain but not in API | Mirror hasn't polled yet | Wait 5 seconds or restart: `sudo systemctl restart level5` |
+| `getProgramAccounts` returns empty | Contract deployed to wrong cluster | Confirm program exists: `solana program show C4UAHo... --url devnet` |
 
 ---
 
@@ -368,7 +469,7 @@ Type=simple
 User=level5
 WorkingDirectory=/opt/level5
 EnvironmentFile=/opt/level5/.env
-ExecStart=/opt/level5/.venv/bin/uvicorn level5.proxy.main:app --host 127.0.0.1 --port 8000 --workers 2
+ExecStart=/opt/level5/.venv/bin/uvicorn level5.proxy.main:app --host 127.0.0.1 --port 18515 --workers 2
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
@@ -389,7 +490,7 @@ server {
     server_name api.level5.cloud;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:18515;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -451,6 +552,58 @@ curl -X POST https://api.level5.cloud/v1/register | jq .
 curl https://api.level5.cloud/v1/admin/stats | jq .
 ```
 
+### 3.11 Verify the Liquid Mirror on mainnet
+
+On mainnet the mirror uses Helius mainnet RPC and WebSocket endpoints. **This involves real funds.**
+
+#### 3.11.1 Confirm the mirror is connected
+
+```bash
+# Look for the startup log line
+sudo journalctl -u level5 | grep "Liquid Mirror starting"
+# Expected: Liquid Mirror starting | rpc=https://mainnet.helius-rpc.com | program=C4UAHo...
+
+# Look for discovered accounts (if any deposits have already happened)
+sudo journalctl -u level5 | grep "Discovered"
+# Expected: Discovered N deposit accounts
+```
+
+#### 3.11.2 Test with a real deposit
+
+```bash
+# 1. Register
+curl -s -X POST https://api.level5.cloud/v1/register | jq .
+
+# 2. Deposit real SOL or USDC to the contract using the deposit code
+# (Use a Solana wallet — Phantom, Solflare, or CLI)
+
+# 3. Watch logs for the mirror to pick it up
+sudo journalctl -u level5 -f | grep -i "synced\|activated"
+
+# 4. Verify balance
+curl -s "https://api.level5.cloud/proxy/YOUR_API_TOKEN/balance" | jq .
+```
+
+#### 3.11.3 Production mirror monitoring
+
+Add these checks to your monitoring/alerting:
+
+```bash
+# Mirror health: check that the admin stats show active agents
+# If deposits are happening but active_agents stays at 0, the mirror is broken
+curl -sf https://api.level5.cloud/v1/admin/stats | jq '.active_agents'
+
+# Check for mirror errors in the last hour
+sudo journalctl -u level5 --since "1 hour ago" | grep -c "Poll error\|WebSocket error"
+```
+
+| Alert condition | Likely cause | Action |
+|----------------|--------------|--------|
+| Repeated `Poll error, backing off` | Helius rate limit or downtime | Check https://helius.statuspage.io; consider upgrading plan |
+| `WebSocket error, reconnecting` loops | Helius WS connection dropped | Mirror auto-reconnects with backoff; check API key validity |
+| Deposits on-chain but not in DB | Mirror not running or wrong program ID | `sudo systemctl status level5`; check `SOVEREIGN_CONTRACT_ADDRESS` |
+| `active_agents` drops to 0 unexpectedly | DB corrupted or deleted | Restore from backup (section 3.8) |
+
 ---
 
 ## Updating a running deployment
@@ -485,7 +638,7 @@ anchor upgrade --provider.cluster TARGET_CLUSTER --program-id C4UAHoYgqZ7dmS4Jyp
 | Solana cluster | localhost:8899 | devnet | mainnet-beta |
 | USDC mint | devnet | devnet | `EPjFWdd5...` (mainnet) |
 | Helius | not needed | free tier | paid plan |
-| Domain | localhost:8000 | staging.level5.cloud | api.level5.cloud |
+| Domain | localhost:18515 | staging.level5.cloud | api.level5.cloud |
 | TLS | no | yes (certbot) | yes (certbot) |
 | Workers | 1 (reload) | 1 | 2+ |
 | Backups | no | optional | required |

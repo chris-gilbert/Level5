@@ -1,4 +1,4 @@
-.PHONY: dev lint format test serve clean
+.PHONY: dev lint format test serve smoke-setup test-deposit clean
 
 dev:
 	uv sync --all-groups
@@ -16,7 +16,13 @@ test-fast:
 	uv run pytest -x -q --no-cov
 
 serve:
-	uv run uvicorn level5.proxy.main:app --reload --host 0.0.0.0 --port 8000
+	uv run uvicorn level5.proxy.main:app --reload --host 0.0.0.0 --port 18515
+
+smoke-setup:
+	uv run python scripts/smoke_setup.py
+
+test-deposit:
+	cd contracts/sovereign-contract && node ../../scripts/test_deposit.js
 
 audit:
 	uv run pip-audit
