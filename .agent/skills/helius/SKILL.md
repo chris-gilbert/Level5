@@ -1,6 +1,6 @@
 ---
 name: helius
-version: 1.0.0
+version: 1.1.0
 description: Leading Solana RPC and API provider - high-performance RPCs, webhooks, WebSockets, DAS API, and real-time data streaming.
 homepage: https://www.helius.dev
 metadata: {"category":"infrastructure","api_base":"https://mainnet.helius-rpc.com","docs":"https://docs.helius.dev","mcp":"https://www.helius.dev/docs/mcp"}
@@ -9,6 +9,16 @@ metadata: {"category":"infrastructure","api_base":"https://mainnet.helius-rpc.co
 # Helius
 
 Helius is the leading RPC and API provider for Solana. It provides high-performance infrastructure for developers building on Solana, including RPC nodes, webhooks, WebSockets, and powerful APIs for NFTs, tokens, and transactions.
+
+## Quick Reference
+
+| Requirement | Value |
+|-------------|-------|
+| Cost | 1 USDC (mainnet) |
+| Transaction Fee | ~0.001 SOL |
+| Network | Solana Mainnet |
+| CLI Install | `npm install -g helius-cli` |
+| Output Format | JSON (use `--json` flag) |
 
 ## Key Files
 
@@ -73,7 +83,36 @@ helius signup --json
 }
 ```
 
-⚠️ **Save your API key!** Store it securely and never expose it in public repos or forum posts.
+**Extract API key:** `response.apiKey`
+
+**Extract RPC URL:** `response.endpoints.mainnet` or `response.endpoints.devnet`
+
+**Save your API key!** Store it securely and never expose it in public repos or forum posts.
+
+### Step 5: Test Your API Key
+
+```bash
+curl "https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
+```
+
+Expected response: `{"jsonrpc":"2.0","result":"ok","id":1}`
+
+## Alternative: Login with Existing Wallet
+
+If you have a funded wallet that already has a Helius account:
+
+```bash
+helius login --keypair /path/to/keypair.json --json
+```
+
+Then retrieve API key:
+
+```bash
+helius apikeys --json
+```
 
 ## Helius Offerings
 
@@ -85,16 +124,6 @@ Lightning-fast RPC nodes for mainnet and devnet.
 **Endpoints:**
 - Mainnet: `https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY`
 - Devnet: `https://devnet.helius-rpc.com/?api-key=YOUR_API_KEY`
-
-**Example - Test RPC:**
-```bash
-curl "https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY" \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
-```
-
-Expected: `{"jsonrpc":"2.0","result":"ok","id":1}`
 
 #### Dedicated Nodes
 Private infrastructure with no rate limits for high-volume applications.
@@ -206,6 +235,42 @@ If the wallet already has a Helius account, `signup` returns the existing projec
 }
 ```
 
+## Agent Implementation Pseudocode
+
+```
+1. CHECK if helius-cli installed
+   - Run: `helius --version`
+   - If fails: run `npm install -g helius-cli`
+
+2. CHECK if keypair exists at ~/.helius-cli/keypair.json
+   - If not: run `helius keygen`, capture wallet address from output
+
+3. CHECK wallet balances (via Solana RPC or external service)
+   - SOL balance: getBalance RPC call
+   - USDC balance: getTokenAccountsByOwner for mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+   - If SOL < 0.001: fund wallet, wait for confirmation
+   - If USDC < 1: fund wallet, wait for confirmation
+
+4. RUN `helius signup --json`
+   - Parse JSON response from stdout
+   - Check exit code:
+     - 0: Success - extract apiKey
+     - 20: Need SOL - return to step 3
+     - 21: Need USDC - return to step 3
+     - 11: Need keypair - return to step 2
+     - Other: Log error, retry with backoff
+
+5. STORE for future use:
+   - apiKey: response.apiKey
+   - projectId: response.projectId
+   - rpcMainnet: response.endpoints.mainnet
+   - rpcDevnet: response.endpoints.devnet
+
+6. VERIFY API key works:
+   - POST to RPC endpoint with getHealth method
+   - Expected: {"jsonrpc":"2.0","result":"ok","id":1}
+```
+
 ## Rate Limits and Credits
 
 - **Initial Credits:** 1,000,000 credits on signup
@@ -243,21 +308,21 @@ Search across Helius docs to find relevant information, code examples, API refer
 **Parameters:**
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `query` | string | ✅ | Search query |
-| `version` | string | ❌ | Filter by version (e.g., 'v0.7') |
-| `language` | string | ❌ | Filter by language (e.g., 'zh', 'es'). Default: 'en' |
-| `apiReferenceOnly` | boolean | ❌ | Only return API reference docs |
-| `codeOnly` | boolean | ❌ | Only return code snippets |
+| `query` | string | Yes | Search query |
+| `version` | string | No | Filter by version (e.g., 'v0.7') |
+| `language` | string | No | Filter by language (e.g., 'zh', 'es'). Default: 'en' |
+| `apiReferenceOnly` | boolean | No | Only return API reference docs |
+| `codeOnly` | boolean | No | Only return code snippets |
 
 ## Important Notes
 
 - **Network:** All signup payments are on Solana **mainnet** (not devnet)
 - **Idempotent:** Running signup with an existing account returns existing project (no duplicate payment)
-- **Config Location:** Helius CLI config stored at `~/.helius-cli/config.json`
+- **Config Location:** JWT stored at `~/.helius-cli/config.json`
 - **Keypair Location:** Default keypair at `~/.helius-cli/keypair.json`
 - **Keypair Format:** Solana CLI format (64-byte JSON array)
 
-## Token Addresses
+## Solana Token Addresses
 
 | Token | Mainnet Address |
 |-------|-----------------|
@@ -298,5 +363,3 @@ curl -X POST "https://agentwallet.mcpay.tech/api/wallets/YOUR_USERNAME/actions/t
   -H "Content-Type: application/json" \
   -d '{"to":"HELIUS_WALLET_ADDRESS","amount":"1000000","asset":"sol","network":"mainnet"}'
 ```
-
-Good luck building on Solana with Helius!
