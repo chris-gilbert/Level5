@@ -359,19 +359,26 @@ async def _handle_streaming(  # pragma: no cover
     is_anthropic = "anthropic" in upstream_url
     collected_events: list[dict[str, Any]] = []
 
+    # Prevent upstream from compressing the SSE stream — avoids zlib
+    # decompression issues when relaying chunked+gzip responses.
+    headers["Accept-Encoding"] = "identity"
+
     async def event_generator() -> AsyncGenerator[bytes]:
         async with (
             httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client,
             client.stream("POST", upstream_url, json=body, headers=headers) as resp,
         ):
-            async for line in resp.aiter_lines():
-                # Collect event data for usage parsing
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str.strip() != "[DONE]":
-                        with contextlib.suppress(json.JSONDecodeError):
-                            collected_events.append(json.loads(data_str))
-                yield (line + "\n").encode()
+            async for raw_bytes in resp.aiter_raw():
+                # Relay raw bytes directly — no re-encoding issues
+                yield raw_bytes
+
+                # Parse SSE events from the raw bytes for usage tracking
+                for line in raw_bytes.decode(errors="replace").splitlines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str.strip() != "[DONE]":
+                            with contextlib.suppress(json.JSONDecodeError):
+                                collected_events.append(json.loads(data_str))
 
         # After stream completes, parse usage and debit
         if is_anthropic:
