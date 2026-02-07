@@ -354,7 +354,7 @@ async def _handle_streaming(  # pragma: no cover
     model: str,
     upstream_url: str,
     headers: dict[str, str],
-) -> StreamingResponse:
+) -> Response | StreamingResponse:
     """Stream SSE from upstream, parse usage, debit after completion."""
     is_anthropic = "anthropic" in upstream_url
     collected_events: list[dict[str, Any]] = []
@@ -363,22 +363,41 @@ async def _handle_streaming(  # pragma: no cover
     # decompression issues when relaying chunked+gzip responses.
     headers["Accept-Encoding"] = "identity"
 
-    async def event_generator() -> AsyncGenerator[bytes]:
-        async with (
-            httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client,
-            client.stream("POST", upstream_url, json=body, headers=headers) as resp,
-        ):
-            async for raw_bytes in resp.aiter_raw():
-                # Relay raw bytes directly — no re-encoding issues
-                yield raw_bytes
+    client = httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT)
+    resp = await client.send(
+        client.build_request("POST", upstream_url, json=body, headers=headers),
+        stream=True,
+    )
 
-                # Parse SSE events from the raw bytes for usage tracking
-                for line in raw_bytes.decode(errors="replace").splitlines():
+    # If upstream returned an error (429 rate limit, 500, etc.), relay it
+    # as a plain JSON response instead of pretending it's a valid SSE stream.
+    if resp.status_code != 200:  # noqa: PLR2004
+        error_body = await resp.aread()
+        await resp.aclose()
+        await client.aclose()
+        return Response(
+            content=error_body,
+            status_code=resp.status_code,
+            headers={"Content-Type": resp.headers.get("content-type", "application/json")},
+        )
+
+    async def event_generator() -> AsyncGenerator[bytes]:
+        try:
+            # aiter_bytes() handles decompression and de-chunking, giving
+            # clean application-level bytes safe to relay to the client.
+            async for chunk in resp.aiter_bytes():
+                yield chunk
+
+                # Parse SSE events from the chunk for usage tracking
+                for line in chunk.decode(errors="replace").splitlines():
                     if line.startswith("data: "):
                         data_str = line[6:]
                         if data_str.strip() != "[DONE]":
                             with contextlib.suppress(json.JSONDecodeError):
                                 collected_events.append(json.loads(data_str))
+        finally:
+            await resp.aclose()
+            await client.aclose()
 
         # After stream completes, parse usage and debit
         if is_anthropic:
