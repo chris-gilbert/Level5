@@ -13,16 +13,22 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import StreamingResponse
 
-from level5.proxy import database
-from level5.proxy.mirror import get_mirror
+load_dotenv()  # Must run before importing modules that read env vars at module level
 
-load_dotenv()
+import httpx  # noqa: E402
+from fastapi import FastAPI, HTTPException, Request, Response  # noqa: E402
+from fastapi.responses import StreamingResponse  # noqa: E402
 
+from level5.proxy import database  # noqa: E402
+from level5.proxy.mirror import get_mirror  # noqa: E402
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("level5.proxy")
 
 # Timeout tuned for streaming — long reads for LLM generation

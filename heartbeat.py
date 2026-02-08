@@ -1,17 +1,20 @@
-import os
-import requests
 import json
+
+import requests
+
 
 def load_credentials():
     try:
-        with open(".colosseum_credentials.json", "r") as f:
+        with open(".colosseum_credentials.json") as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
 
+
 creds = load_credentials()
 API_KEY = creds.get("api_key")
 BASE_URL = "https://agents.colosseum.com/api"
+
 
 def check_heartbeat():
     print("--- Fetching Heartbeat ---")
@@ -24,6 +27,7 @@ def check_heartbeat():
     else:
         print(f"Failed to fetch heartbeat: {response.status_code}")
 
+
 def check_status():
     print("--- Checking Agent Status ---")
     headers = {"Authorization": f"Bearer {API_KEY}"}
@@ -32,9 +36,9 @@ def check_status():
         status = response.json()
         print(json.dumps(status, indent=2))
         return status
-    else:
-        print(f"Failed to fetch status: {response.status_code}")
-        return None
+    print(f"Failed to fetch status: {response.status_code}")
+    return None
+
 
 if __name__ == "__main__":
     if not API_KEY:

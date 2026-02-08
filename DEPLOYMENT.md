@@ -91,7 +91,7 @@ make test          # 45 tests, 80%+ coverage required
 make lint          # ruff check + format
 ```
 
-### 1.7 Start the proxy
+### 1.7 Start the proxy (with Liquid Mirror)
 
 Delete any `sovereign_proxy.db` left over from an older version — the schema has changed and `CREATE TABLE IF NOT EXISTS` won't migrate it:
 
@@ -101,7 +101,27 @@ make serve
 # or: uv run uvicorn level5.proxy.main:app --reload --host 0.0.0.0 --port 18515
 ```
 
-The server creates a fresh database on startup.
+The server creates a fresh database on startup. The **Liquid Mirror** starts automatically as part of the FastAPI lifespan — no separate process needed.
+
+#### Verify the mirror is running
+
+You should see these lines in the proxy startup logs:
+
+```
+Liquid Mirror starting | rpc=http://localhost:8899 | program=C4UAHo...
+Discovered 0 deposit accounts
+```
+
+If you see `Discovered 0 deposit accounts`, that's expected on a fresh validator — there are no deposit accounts yet. After running a deposit (section 1.9), restart the proxy or wait for the next poll cycle (5 seconds) to see discovered accounts.
+
+#### Mirror troubleshooting (local)
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| No "Liquid Mirror starting" in logs | `.env` missing `HELIUS_RPC_URL` | Ensure `.env` has `HELIUS_RPC_URL=http://localhost:8899` and `HELIUS_WS_URL=ws://localhost:8900` |
+| `Failed to discover accounts` | Local validator not running | Start it: `solana-test-validator --reset` |
+| `Poll error, backing off` | Wrong RPC URL or validator crashed | Check `HELIUS_RPC_URL` in `.env` and validator terminal |
+| `WebSocket error, reconnecting` | Local validator WS on different port | Confirm `HELIUS_WS_URL=ws://localhost:8900` |
 
 ### 1.8 End-to-end smoke test
 
@@ -133,38 +153,47 @@ The Liquid Mirror polls `getProgramAccounts` via RPC and subscribes via WebSocke
 
 **Prerequisites:** The proxy must be running (`make serve`), the local validator must be running (`solana-test-validator`), and the contract must be deployed (step 1.4).
 
-#### 1.9.1 Register an agent and note the deposit code
+**How the flow works:**
+
+1. Agent calls `/v1/register` and receives an `api_token` and `deposit_code` (8-character string like `ABC123XY`).
+2. Agent creates a deposit account on-chain, passing the `deposit_code` to the contract. The contract uses `[b"deposit", deposit_code, owner_pubkey]` as PDA seeds, so each deposit_code produces a unique deterministic account address.
+3. Agent deposits SOL (or SPL tokens) into that account.
+4. The Liquid Mirror discovers the account, reads the `deposit_code` from the on-chain data, looks it up in the database, and auto-activates the matching API token.
+
+This means the `deposit_code` is the cryptographic link between the off-chain registration and the on-chain deposit. No guessing, no FIFO matching.
+
+#### 1.9.1 Register an agent
 
 ```bash
 curl -s -X POST http://localhost:18515/v1/register | jq .
 ```
 
-Save the `api_token` and `deposit_code` from the response.
+Save the `api_token` and `deposit_code` from the response. You will need the `deposit_code` for the next step.
 
-#### 1.9.2 Create a deposit account and deposit SOL on-chain
+#### 1.9.2 Deposit SOL on-chain
 
-Use the test deposit script to initialize a deposit account and deposit 1 SOL:
+Pass the `deposit_code` to the test deposit script:
 
 ```bash
-make test-deposit
-# or: cd contracts/sovereign-contract && node ../../scripts/test_deposit.js
+make test-deposit DEPOSIT_CODE=<your_deposit_code>
+# Example: make test-deposit DEPOSIT_CODE=ABC123XY
 ```
 
-The script generates a fresh deposit keypair, initializes the account on-chain, and deposits 1 SOL (1,000,000,000 lamports). It uses `ANCHOR_PROVIDER_URL` and `ANCHOR_WALLET` from your Solana CLI config.
+The script derives the deposit account PDA from the deposit_code and your wallet pubkey, initializes it on-chain, and deposits 1 SOL.
 
 #### 1.9.3 Watch the mirror detect the deposit
 
-The mirror polls every 5 seconds. Watch the proxy logs for sync messages:
+The mirror re-discovers new accounts every ~30 seconds and polls known accounts every 5 seconds. Watch the proxy logs:
 
 ```
-Liquid Mirror starting | rpc=http://localhost:8899 | program=C4UAHo...
-Synced XXXXXXXX [So111111]: 0 -> 1000000000 (+1000000000)
-Auto-activated token XXXXXXXX for pubkey XXXXXXXX
+Discovered 1 deposit accounts
+Synced XXXXXXXX [11111111]: 0 -> 1000000000 (+1000000000)
+Auto-activated token XXXXXXXX for deposit_code ABC123XY (pubkey XXXXXXXX)
 ```
 
-If you don't see the log, the mirror may not have discovered the new account yet. It discovers accounts on startup and every poll cycle. You can restart the proxy to trigger a fresh discovery.
+The key line is `Auto-activated token` — this confirms the mirror read the `deposit_code` from the on-chain account, matched it to your registration, and linked your API token to your wallet pubkey.
 
-#### 1.9.4 Verify the balance appeared via the API
+#### 1.9.4 Verify the balance via the API
 
 ```bash
 # Replace with your api_token from step 1.9.1
@@ -178,10 +207,11 @@ Expected: a `balances` object containing `So111111111111111111111111111111111111
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | No accounts discovered | Contract not deployed or wrong program ID | Check `SOVEREIGN_CONTRACT_ADDRESS` in `.env` matches `declare_id!()` |
-| Balance stays at 0 | Deposit account created but not discovered yet | Restart the proxy to trigger `_discover_accounts()` |
+| Account discovered but no "Synced" log | Account data didn't parse (wrong layout) | Ensure contract was rebuilt and redeployed after adding deposit_code |
+| "Synced" appears but no "Auto-activated" | deposit_code didn't match any registration | Verify the deposit_code you passed matches one from `/v1/register` |
+| Balance in logs but API returns 0 | API token not activated | Check that "Auto-activated" appeared in logs; re-register and re-deposit if not |
 | WebSocket errors in logs | Local validator WS on different port | Confirm `HELIUS_WS_URL=ws://localhost:8900` |
 | `Poll error, backing off` | RPC URL wrong | Confirm `HELIUS_RPC_URL=http://localhost:8899` |
-| Token not auto-activated | No pending token matched | Ensure you called `/v1/register` before depositing |
 
 ---
 

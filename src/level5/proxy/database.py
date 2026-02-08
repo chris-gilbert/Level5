@@ -234,21 +234,18 @@ def activate_token(deposit_code: str, pubkey: str) -> str | None:
     return api_token
 
 
-def find_pending_token_for_pubkey(pubkey: str) -> str | None:  # noqa: ARG001
-    """Check if there's a pending (unactivated) token waiting for this pubkey.
+def find_token_by_deposit_code(deposit_code: str) -> str | None:
+    """Look up the api_token for a given deposit_code.
 
-    This is used by the mirror to auto-activate tokens when it sees a new deposit.
-    Returns deposit_code if found, None otherwise.
-
-    NOTE: For simplicity, this just returns the oldest pending token.
-    In production, you'd use PDA derivation to match deposit_code -> address -> pubkey.
+    Returns api_token if found and not yet activated, None otherwise.
     """
     conn = get_db_connection()
     row = conn.execute(
-        "SELECT deposit_code FROM api_tokens WHERE pubkey IS NULL ORDER BY created_at ASC LIMIT 1",
+        "SELECT api_token FROM api_tokens WHERE deposit_code = ? AND pubkey IS NULL",
+        (deposit_code,),
     ).fetchone()
     conn.close()
-    return row["deposit_code"] if row else None
+    return row["api_token"] if row else None
 
 
 def get_pubkey_from_token(api_token: str) -> str | None:

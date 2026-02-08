@@ -9,14 +9,16 @@ pub mod sovereign_contract {
     use super::*;
 
     /// Initialize a SOL deposit account (legacy, backward compatible).
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, deposit_code: [u8; 8]) -> Result<()> {
         let deposit_account = &mut ctx.accounts.deposit_account;
         deposit_account.owner = *ctx.accounts.owner.key;
         deposit_account.mint = System::id(); // Native SOL sentinel
+        deposit_account.deposit_code = deposit_code;
         deposit_account.balance = 0;
         msg!(
-            "SOL Deposit Account initialized for: {:?}",
-            deposit_account.owner
+            "SOL Deposit Account initialized for: {:?} code: {:?}",
+            deposit_account.owner,
+            deposit_account.deposit_code
         );
         Ok(())
     }
@@ -45,6 +47,7 @@ pub mod sovereign_contract {
         emit!(DepositEvent {
             owner: *ctx.accounts.owner.key,
             mint: deposit_account.mint,
+            deposit_code: deposit_account.deposit_code,
             amount,
             new_balance: deposit_account.balance,
         });
@@ -93,15 +96,17 @@ pub mod sovereign_contract {
     }
 
     /// Initialize a token (e.g. USDC) deposit account.
-    pub fn initialize_token(ctx: Context<InitializeToken>) -> Result<()> {
+    pub fn initialize_token(ctx: Context<InitializeToken>, deposit_code: [u8; 8]) -> Result<()> {
         let deposit_account = &mut ctx.accounts.deposit_account;
         deposit_account.owner = *ctx.accounts.owner.key;
         deposit_account.mint = ctx.accounts.mint.key();
+        deposit_account.deposit_code = deposit_code;
         deposit_account.balance = 0;
         msg!(
-            "Token Deposit Account initialized for: {:?} mint: {:?}",
+            "Token Deposit Account initialized for: {:?} mint: {:?} code: {:?}",
             deposit_account.owner,
-            deposit_account.mint
+            deposit_account.mint,
+            deposit_account.deposit_code
         );
         Ok(())
     }
@@ -131,6 +136,7 @@ pub mod sovereign_contract {
         emit!(DepositEvent {
             owner: *ctx.accounts.owner.key,
             mint: deposit_account.mint,
+            deposit_code: deposit_account.deposit_code,
             amount,
             new_balance: deposit_account.balance,
         });
@@ -230,8 +236,15 @@ pub mod sovereign_contract {
 // ── Account structs ──────────────────────────────────────────────────
 
 #[derive(Accounts)]
+#[instruction(deposit_code: [u8; 8])]
 pub struct Initialize<'info> {
-    #[account(init, payer = owner, space = 8 + 32 + 32 + 8)]
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + 32 + 32 + 8 + 8,
+        seeds = [b"deposit", deposit_code.as_ref(), owner.key().as_ref()],
+        bump,
+    )]
     pub deposit_account: Account<'info, DepositAccount>,
     #[account(mut)]
     pub owner: Signer<'info>,
@@ -257,8 +270,15 @@ pub struct Withdraw<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(deposit_code: [u8; 8])]
 pub struct InitializeToken<'info> {
-    #[account(init, payer = owner, space = 8 + 32 + 32 + 8)]
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + 32 + 32 + 8 + 8,
+        seeds = [b"deposit", deposit_code.as_ref(), owner.key().as_ref()],
+        bump,
+    )]
     pub deposit_account: Account<'info, DepositAccount>,
     pub mint: Account<'info, Mint>,
     #[account(
@@ -356,11 +376,12 @@ pub struct CloseTokenAccount<'info> {
 // ── State ────────────────────────────────────────────────────────────
 
 /// Deposit account tracking balance for a single token per owner.
-/// Layout: discriminator(8) + owner(32) + mint(32) + balance(8) = 80 bytes
+/// Layout: discriminator(8) + owner(32) + mint(32) + deposit_code(8) + balance(8) = 88 bytes
 #[account]
 pub struct DepositAccount {
     pub owner: Pubkey,
     pub mint: Pubkey,
+    pub deposit_code: [u8; 8],
     pub balance: u64,
 }
 
@@ -370,6 +391,7 @@ pub struct DepositAccount {
 pub struct DepositEvent {
     pub owner: Pubkey,
     pub mint: Pubkey,
+    pub deposit_code: [u8; 8],
     pub amount: u64,
     pub new_balance: u64,
 }

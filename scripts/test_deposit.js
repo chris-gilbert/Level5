@@ -6,7 +6,8 @@
  *   - Contract deployed (anchor deploy --provider.cluster localnet)
  *   - Wallet funded (solana airdrop 10)
  *
- * Usage: node scripts/test_deposit.js
+ * Usage: node scripts/test_deposit.js <DEPOSIT_CODE>
+ *   DEPOSIT_CODE: the 8-character code from /v1/register (e.g. "ABC123XY")
  *
  * Requires: @coral-xyz/anchor (installed via contracts/sovereign-contract/node_modules)
  */
@@ -16,6 +17,15 @@ const fs = require("fs");
 const path = require("path");
 
 async function main() {
+  const depositCode = process.argv[2];
+  if (!depositCode || depositCode.length !== 8) {
+    console.error(
+      "Usage: node scripts/test_deposit.js <DEPOSIT_CODE>\n" +
+        "  DEPOSIT_CODE must be exactly 8 characters (from /v1/register)"
+    );
+    process.exit(1);
+  }
+
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -31,19 +41,31 @@ async function main() {
   const idl = JSON.parse(fs.readFileSync(idlPath, "utf8"));
   const program = new anchor.Program(idl, provider);
 
-  // Generate a fresh deposit account keypair
-  const depositAccount = anchor.web3.Keypair.generate();
-  console.log("Deposit account:", depositAccount.publicKey.toBase58());
+  // Convert deposit code to 8-byte array
+  const depositCodeBytes = Buffer.alloc(8);
+  depositCodeBytes.write(depositCode, "utf8");
+
+  // Derive the PDA for this deposit account
+  const [depositAccountPDA] = anchor.web3.PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("deposit"),
+      depositCodeBytes,
+      provider.wallet.publicKey.toBuffer(),
+    ],
+    program.programId
+  );
+
+  console.log("Deposit code:   ", depositCode);
+  console.log("Deposit account:", depositAccountPDA.toBase58());
   console.log("Owner:          ", provider.wallet.publicKey.toBase58());
 
-  // Initialize the deposit account
+  // Initialize the deposit account with the deposit code
   await program.methods
-    .initialize()
+    .initialize(Array.from(depositCodeBytes))
     .accounts({
-      depositAccount: depositAccount.publicKey,
+      depositAccount: depositAccountPDA,
       owner: provider.wallet.publicKey,
     })
-    .signers([depositAccount])
     .rpc();
   console.log("Initialized deposit account");
 
@@ -52,13 +74,13 @@ async function main() {
   await program.methods
     .deposit(amount)
     .accounts({
-      depositAccount: depositAccount.publicKey,
+      depositAccount: depositAccountPDA,
       owner: provider.wallet.publicKey,
     })
     .rpc();
   console.log("Deposited 1 SOL (1,000,000,000 lamports)");
   console.log(
-    "The Liquid Mirror should detect this within 5 seconds — check the proxy logs."
+    "The Liquid Mirror should detect this within 30 seconds — check the proxy logs."
   );
 }
 

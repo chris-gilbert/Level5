@@ -28,7 +28,11 @@ smoke-setup:
 	uv run python scripts/smoke_setup.py
 
 test-deposit:
-	cd contracts/sovereign-contract && node ../../scripts/test_deposit.js
+	@test -n "$(DEPOSIT_CODE)" || (echo "Usage: make test-deposit DEPOSIT_CODE=XXXXXXXX" && exit 1)
+	cd contracts/sovereign-contract && NODE_PATH=node_modules \
+		ANCHOR_PROVIDER_URL=http://127.0.0.1:8899 \
+		ANCHOR_WALLET=~/.config/solana/id.json \
+		node ../../scripts/test_deposit.js $(DEPOSIT_CODE)
 
 audit:
 	uv run pip-audit
